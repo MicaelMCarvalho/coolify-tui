@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -74,6 +75,26 @@ func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
 	})
 
 	return projects, nil
+}
+
+func (c *Client) GetProject(
+	ctx context.Context,
+	projectUUID string,
+) (ProjectDetails, error) {
+	var project ProjectDetails
+
+	projectUUID = strings.TrimSpace(projectUUID)
+	if projectUUID == "" {
+		return ProjectDetails{}, fmt.Errorf("project UUID is empty")
+	}
+
+	path := "/projects/" + url.PathEscape(projectUUID)
+
+	if err := c.get(ctx, path, &project); err != nil {
+		return ProjectDetails{}, fmt.Errorf("get project: %w", err)
+	}
+
+	return project, nil
 }
 
 func (c *Client) get(
