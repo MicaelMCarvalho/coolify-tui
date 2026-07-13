@@ -57,6 +57,9 @@ func (m Model) View() string {
 	case resourceDetailsScreen:
 		return m.resourceDetailsView()
 
+	case deploymentsScreen:
+		return m.deploymentsView()
+
 	default:
 		return m.projectsView()
 	}
@@ -307,14 +310,132 @@ func (m Model) resourceDetailsView() string {
 		writeDetail("FQDN", *resource.FQDN)
 	}
 
+	footer := "esc back • q quit"
+
+	if strings.EqualFold(resource.Type, "application") {
+		footer = "d deployments • esc back • q quit"
+	}
+
+	view.WriteString("\n")
+	view.WriteString(footerStyle.Render(footer))
+
+	return view.String()
+}
+
+func (m Model) deploymentsView() string {
+	var view strings.Builder
+
+	resource := m.selectedResource()
+	if resource == nil {
+		return "No application selected."
+	}
+
+	title := fmt.Sprintf(
+		"Coolify / %s / Deployments",
+		resource.Name,
+	)
+
+	view.WriteString(titleStyle.Render(title))
+	view.WriteString("\n\n")
+
+	if len(m.deployments) == 0 {
+		view.WriteString("No deployments found.\n\n")
+		view.WriteString(
+			footerStyle.Render(
+				"esc back • r refresh • q quit",
+			),
+		)
+		return view.String()
+	}
+
+	start, end := m.visibleRange(
+		m.deploymentCursor,
+		len(m.deployments),
+	)
+
+	for index := start; index < end; index++ {
+		deployment := m.deployments[index]
+
+		cursor := "  "
+		label := shortCommit(deployment.Commit)
+
+		if deployment.CommitMessage != nil &&
+			*deployment.CommitMessage != "" {
+			label += " — " + singleLine(
+				*deployment.CommitMessage,
+			)
+		}
+
+		if index == m.deploymentCursor {
+			cursor = "› "
+			label = selectedStyle.Render(label)
+		}
+
+		view.WriteString(cursor)
+		view.WriteString(renderDeploymentStatus(
+			deployment.Status,
+		))
+		view.WriteString("  ")
+		view.WriteString(label)
+		view.WriteString("\n")
+	}
+
 	view.WriteString("\n")
 	view.WriteString(
 		footerStyle.Render(
-			"esc back • r refresh • q quit",
+			fmt.Sprintf(
+				"%d/%d loaded • %d total • j/k move • esc back • r refresh • q quit",
+				m.deploymentCursor+1,
+				len(m.deployments),
+				m.deploymentCount,
+			),
 		),
 	)
 
 	return view.String()
+}
+
+func renderDeploymentStatus(status string) string {
+	lowerStatus := strings.ToLower(status)
+
+	switch {
+	case strings.Contains(lowerStatus, "finished"),
+		strings.Contains(lowerStatus, "success"):
+		return runningStyle.Render("● " + status)
+
+	case strings.Contains(lowerStatus, "failed"),
+		strings.Contains(lowerStatus, "error"):
+		return stoppedStyle.Render("● " + status)
+
+	case strings.Contains(lowerStatus, "progress"),
+		strings.Contains(lowerStatus, "queued"),
+		strings.Contains(lowerStatus, "running"):
+		return unknownStyle.Render("● " + status)
+
+	default:
+		return descriptionStyle.Render("● " + status)
+	}
+}
+
+func shortCommit(commit string) string {
+	commit = strings.TrimSpace(commit)
+
+	if len(commit) > 8 {
+		return commit[:8]
+	}
+
+	if commit == "" {
+		return "no commit"
+	}
+
+	return commit
+}
+
+func singleLine(value string) string {
+	value = strings.ReplaceAll(value, "\n", " ")
+	value = strings.ReplaceAll(value, "\r", " ")
+
+	return strings.TrimSpace(value)
 }
 
 func renderStatus(status string) string {

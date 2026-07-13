@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -130,6 +131,48 @@ func (c *Client) ListResources(
 	})
 
 	return resources, nil
+}
+
+func (c *Client) ListApplicationDeployments(
+	ctx context.Context,
+	applicationUUID string,
+	skip int,
+	take int,
+) (DeploymentList, error) {
+	applicationUUID = strings.TrimSpace(applicationUUID)
+
+	if applicationUUID == "" {
+		return DeploymentList{},
+			fmt.Errorf("application UUID is required")
+	}
+
+	if skip < 0 {
+		return DeploymentList{},
+			fmt.Errorf("skip cannot be negative")
+	}
+
+	if take < 1 {
+		return DeploymentList{},
+			fmt.Errorf("take must be positive")
+	}
+
+	query := url.Values{}
+	query.Set("skip", strconv.Itoa(skip))
+	query.Set("take", strconv.Itoa(take))
+
+	path := "/deployments/applications/" +
+		url.PathEscape(applicationUUID) +
+		"?" +
+		query.Encode()
+
+	var deployments DeploymentList
+
+	if err := c.get(ctx, path, &deployments); err != nil {
+		return DeploymentList{},
+			fmt.Errorf("list application deployments: %w", err)
+	}
+
+	return deployments, nil
 }
 
 func (c *Client) get(

@@ -14,6 +14,7 @@ const (
 	environmentsScreen
 	resourcesScreen
 	resourceDetailsScreen
+	deploymentsScreen
 )
 
 type projectsLoadedMsg struct {
@@ -26,6 +27,10 @@ type projectLoadedMsg struct {
 
 type resourcesLoadedMsg struct {
 	resources []coolify.Resource
+}
+
+type deploymentsLoadedMsg struct {
+	result coolify.DeploymentList
 }
 
 type errMsg struct {
@@ -44,6 +49,10 @@ type Model struct {
 
 	resources      []coolify.Resource
 	resourceCursor int
+
+	deployments      []coolify.Deployment
+	deploymentCount  int
+	deploymentCursor int
 
 	width   int
 	height  int
@@ -106,5 +115,22 @@ func (m Model) loadResources(environmentID int) tea.Cmd {
 			return errMsg{err: err}
 		}
 		return resourcesLoadedMsg{resources: resources}
+	}
+}
+
+func (m Model) loadDeployments(
+	applicationUUID string,
+) tea.Cmd {
+	return func() tea.Msg {
+		result, err := m.client.ListApplicationDeployments(
+			context.Background(),
+			applicationUUID,
+			0,
+			20,
+		)
+		if err != nil {
+			return errMsg{err: err}
+		}
+		return deploymentsLoadedMsg{result: result}
 	}
 }

@@ -50,6 +50,29 @@ type Resource struct {
 	FQDN          *string `json:"fqdn"`
 }
 
+type Deployment struct {
+	// ID              int     `json:"id"`
+	DeploymentUUID string `json:"deployment_uuid"`
+	// ApplicationID   int     `json:"application_id"`
+	ApplicationName string  `json:"application_name"`
+	Status          string  `json:"status"`
+	Commit          string  `json:"commit"`
+	CommitMessage   *string `json:"commit_message"`
+	ServerName      string  `json:"server_name"`
+	DeploymentURL   *string `json:"deployment_url"`
+	ForceRebuild    bool    `json:"force_rebuild"`
+	RestartOnly     bool    `json:"restart_only"`
+	Rollback        bool    `json:"rollback"`
+	CreatedAt       string  `json:"created_at"`
+	UpdatedAt       string  `json:"updated_at"`
+	FinishedAt      *string `json:"finished_at"`
+}
+
+type DeploymentList struct {
+	Count       int          `json:"count"`
+	Deployments []Deployment `json:"deployments"`
+}
+
 type APIError struct {
 	Message string `json:"message"`
 }

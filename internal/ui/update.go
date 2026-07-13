@@ -1,6 +1,10 @@
 package ui
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -29,6 +33,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resources = msg.resources
 		m.resourceCursor = 0
 		m.screen = resourcesScreen
+		m.loading = false
+		m.err = nil
+
+	case deploymentsLoadedMsg:
+		m.deployments = msg.result.Deployments
+		m.deploymentCount = msg.result.Count
+		m.deploymentCursor = 0
+		m.screen = deploymentsScreen
 		m.loading = false
 		m.err = nil
 
@@ -61,6 +73,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.screen = resourcesScreen
 				m.loading = false
 				m.err = nil
+
+			case deploymentsScreen:
+				m.screen = resourceDetailsScreen
+				m.deployments = nil
+				m.deploymentCount = 0
+				m.deploymentCursor = 0
+				m.loading = false
+				m.err = nil
 			}
 
 		case "r":
@@ -76,6 +96,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				len(m.project.Environments) > 0 {
 				environment := m.project.Environments[m.environmentCursor]
 				return m, m.loadResources(environment.ID)
+			}
+
+			if m.screen == deploymentsScreen {
+				resource := m.selectedResource()
+
+				if resource != nil {
+					return m, m.loadDeployments(resource.UUID)
+				}
 			}
 
 			if m.project != nil {
@@ -128,6 +156,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "G":
 			m.moveToLast()
+
+		case "d":
+			if m.screen != resourceDetailsScreen ||
+				m.loading ||
+				m.err != nil {
+				break
+			}
+
+			resource := m.selectedResource()
+			if resource == nil ||
+				!strings.EqualFold(resource.Type, "application") {
+				break
+			}
+
+			m.loading = true
+			m.err = nil
+			return m, m.loadDeployments(resource.UUID)
+
 		}
 	}
 
@@ -161,6 +207,13 @@ func (m *Model) moveCursor(change int) {
 		if next >= 0 && next < len(m.resources) {
 			m.resourceCursor = next
 		}
+
+	case deploymentsScreen:
+		next := m.deploymentCursor + change
+
+		if next >= 0 && next < len(m.deployments) {
+			m.deploymentCursor = next
+		}
 	}
 }
 
@@ -174,6 +227,9 @@ func (m *Model) moveToFirst() {
 
 	case resourcesScreen:
 		m.resourceCursor = 0
+
+	case deploymentsScreen:
+		m.deploymentCursor = 0
 	}
 }
 
@@ -194,6 +250,11 @@ func (m *Model) moveToLast() {
 	case resourcesScreen:
 		if len(m.resources) > 0 {
 			m.resourceCursor = len(m.resources) - 1
+		}
+
+	case deploymentsScreen:
+		if len(m.deployments) > 0 {
+			m.deploymentCursor = len(m.deployments) - 1
 		}
 	}
 }
