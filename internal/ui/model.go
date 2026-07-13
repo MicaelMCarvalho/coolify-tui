@@ -32,6 +32,7 @@ type resourcesLoadedMsg struct {
 
 type deploymentsLoadedMsg struct {
 	result coolify.DeploymentList
+	skip   int
 }
 
 type errMsg struct {
@@ -54,6 +55,8 @@ type Model struct {
 	deployments      []coolify.Deployment
 	deploymentCount  int
 	deploymentCursor int
+	deploymentSkip   int
+	deploymentTake   int
 
 	width   int
 	height  int
@@ -63,9 +66,10 @@ type Model struct {
 
 func NewModel(client *coolify.Client) Model {
 	return Model{
-		client:  client,
-		screen:  projectsScreen,
-		loading: true,
+		client:         client,
+		screen:         projectsScreen,
+		loading:        true,
+		deploymentTake: 20,
 	}
 }
 
@@ -121,18 +125,22 @@ func (m Model) loadResources(environmentID int) tea.Cmd {
 
 func (m Model) loadDeployments(
 	applicationUUID string,
+	skip int,
 ) tea.Cmd {
 	return func() tea.Msg {
 		result, err := m.client.ListApplicationDeployments(
 			context.Background(),
 			applicationUUID,
-			0,
-			20,
+			skip,
+			m.deploymentTake,
 		)
 		if err != nil {
 			return errMsg{err: err}
 		}
-		return deploymentsLoadedMsg{result: result}
+		return deploymentsLoadedMsg{
+			result: result,
+			skip:   skip,
+		}
 	}
 }
 

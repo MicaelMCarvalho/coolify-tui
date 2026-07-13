@@ -39,6 +39,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case deploymentsLoadedMsg:
 		m.deployments = msg.result.Deployments
 		m.deploymentCount = msg.result.Count
+		m.deploymentSkip = msg.skip
 		m.deploymentCursor = 0
 		m.screen = deploymentsScreen
 		m.loading = false
@@ -79,6 +80,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.deployments = nil
 				m.deploymentCount = 0
 				m.deploymentCursor = 0
+				m.deploymentSkip = 0
 				m.loading = false
 				m.err = nil
 
@@ -107,7 +109,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				resource := m.selectedResource()
 
 				if resource != nil {
-					return m, m.loadDeployments(resource.UUID)
+					return m, m.loadDeployments(
+						resource.UUID,
+						m.deploymentSkip,
+					)
 				}
 			}
 
@@ -182,8 +187,48 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.loading = true
 			m.err = nil
-			return m, m.loadDeployments(resource.UUID)
+			m.deploymentSkip = 0
+			return m, m.loadDeployments(resource.UUID, 0)
 
+		case "n":
+			if m.screen != deploymentsScreen ||
+				m.loading {
+				break
+			}
+			nextSkip := m.deploymentSkip + m.deploymentTake
+			if nextSkip >= m.deploymentCount {
+				break
+			}
+			resource := m.selectedResource()
+			if resource == nil {
+				break
+			}
+			m.loading = true
+			m.err = nil
+			return m, m.loadDeployments(
+				resource.UUID,
+				nextSkip,
+			)
+
+		case "p":
+			if m.screen != deploymentsScreen ||
+				m.loading {
+				break
+			}
+			prevSkip := m.deploymentSkip - m.deploymentTake
+			if prevSkip < 0 {
+				break
+			}
+			resource := m.selectedResource()
+			if resource == nil {
+				break
+			}
+			m.loading = true
+			m.err = nil
+			return m, m.loadDeployments(
+				resource.UUID,
+				prevSkip,
+			)
 		}
 	}
 

@@ -384,12 +384,25 @@ func (m Model) deploymentsView() string {
 	}
 
 	view.WriteString("\n")
+	currentPage := 1
+	totalPages := 1
+
+	if m.deploymentTake > 0 {
+		currentPage =
+			(m.deploymentSkip / m.deploymentTake) + 1
+
+		if m.deploymentCount > 0 {
+			totalPages =
+				(m.deploymentCount + m.deploymentTake - 1) /
+					m.deploymentTake
+		}
+	}
 	view.WriteString(
 		footerStyle.Render(
 			fmt.Sprintf(
-				"%d/%d loaded • %d total • j/k move • enter details • esc back • r refresh • q quit",
-				m.deploymentCursor+1,
-				len(m.deployments),
+				"page %d/%d • %d total • j/k move • enter details • n/p page • esc back • r refresh • q quit",
+				currentPage,
+				totalPages,
 				m.deploymentCount,
 			),
 		),
