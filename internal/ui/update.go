@@ -81,6 +81,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.deploymentCursor = 0
 				m.loading = false
 				m.err = nil
+
+			case deploymentDetailsScreen:
+				m.screen = deploymentsScreen
+				m.loading = false
+				m.err = nil
 			}
 
 		case "r":
@@ -142,6 +147,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case resourcesScreen:
 				if m.selectedResource() != nil {
 					m.screen = resourceDetailsScreen
+				}
+
+			case deploymentsScreen:
+				if m.selectedDeployment() != nil {
+					m.screen = deploymentDetailsScreen
 				}
 			}
 

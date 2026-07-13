@@ -60,6 +60,9 @@ func (m Model) View() string {
 	case deploymentsScreen:
 		return m.deploymentsView()
 
+	case deploymentDetailsScreen:
+		return m.deploymentDetailsView()
+
 	default:
 		return m.projectsView()
 	}
@@ -384,12 +387,83 @@ func (m Model) deploymentsView() string {
 	view.WriteString(
 		footerStyle.Render(
 			fmt.Sprintf(
-				"%d/%d loaded • %d total • j/k move • esc back • r refresh • q quit",
+				"%d/%d loaded • %d total • j/k move • enter details • esc back • r refresh • q quit",
 				m.deploymentCursor+1,
 				len(m.deployments),
 				m.deploymentCount,
 			),
 		),
+	)
+
+	return view.String()
+}
+
+func (m Model) deploymentDetailsView() string {
+	deployment := m.selectedDeployment()
+	if deployment == nil {
+		return "No deployment selected."
+	}
+
+	var view strings.Builder
+
+	view.WriteString(
+		titleStyle.Render("Coolify / Deployment"),
+	)
+	view.WriteString("\n\n")
+
+	writeDetail := func(label string, value string) {
+		if strings.TrimSpace(value) == "" {
+			return
+		}
+
+		view.WriteString(
+			descriptionStyle.Render(label + ": "),
+		)
+		view.WriteString(value)
+		view.WriteString("\n")
+	}
+
+	writeDetail(
+		"Status",
+		renderDeploymentStatus(deployment.Status),
+	)
+	writeDetail("Application", deployment.ApplicationName)
+	writeDetail("Deployment UUID", deployment.DeploymentUUID)
+	writeDetail("Commit", deployment.Commit)
+	writeDetail("Server", deployment.ServerName)
+	writeDetail("Created", deployment.CreatedAt)
+	writeDetail("Updated", deployment.UpdatedAt)
+
+	if deployment.CommitMessage != nil {
+		writeDetail(
+			"Commit message",
+			singleLine(*deployment.CommitMessage),
+		)
+	}
+
+	if deployment.FinishedAt != nil {
+		writeDetail("Finished", *deployment.FinishedAt)
+	}
+
+	if deployment.DeploymentURL != nil {
+		writeDetail("Deployment URL", *deployment.DeploymentURL)
+	}
+
+	if deployment.ForceRebuild {
+		writeDetail("Force rebuild", "yes")
+	}
+
+	if deployment.RestartOnly {
+		writeDetail("Restart only", "yes")
+	}
+
+	if deployment.Rollback {
+		writeDetail("Rollback", "yes")
+	}
+
+	view.WriteString("\n")
+	view.WriteString(
+		footerStyle.Render("esc back • q quit"),
 	)
 
 	return view.String()

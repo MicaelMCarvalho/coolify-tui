@@ -15,6 +15,7 @@ const (
 	resourcesScreen
 	resourceDetailsScreen
 	deploymentsScreen
+	deploymentDetailsScreen
 )
 
 type projectsLoadedMsg struct {
@@ -133,4 +134,14 @@ func (m Model) loadDeployments(
 		}
 		return deploymentsLoadedMsg{result: result}
 	}
+}
+
+func (m Model) selectedDeployment() *coolify.Deployment {
+	if len(m.deployments) == 0 ||
+		m.deploymentCursor < 0 ||
+		m.deploymentCursor >= len(m.deployments) {
+		return nil
+	}
+
+	return &m.deployments[m.deploymentCursor]
 }
