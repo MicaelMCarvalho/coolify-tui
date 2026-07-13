@@ -97,6 +97,41 @@ func (c *Client) GetProject(
 	return project, nil
 }
 
+func (c *Client) ListResources(
+	ctx context.Context,
+	environmentID int,
+) ([]Resource, error) {
+	if environmentID <= 0 {
+		return nil, fmt.Errorf("environment ID must be positive")
+	}
+
+	var allResources []Resource
+
+	if err := c.get(ctx, "/resources", &allResources); err != nil {
+		return nil, fmt.Errorf("list resources: %w", err)
+	}
+
+	resources := make([]Resource, 0)
+
+	for _, resource := range allResources {
+		if resource.EnvironmentID == environmentID {
+			resources = append(resources, resource)
+		}
+	}
+
+	sort.Slice(resources, func(i, j int) bool {
+		left := strings.ToLower(resources[i].Name)
+		right := strings.ToLower(resources[j].Name)
+
+		if left == right {
+			return resources[i].Type < resources[j].Type
+		}
+		return left < right
+	})
+
+	return resources, nil
+}
+
 func (c *Client) get(
 	ctx context.Context,
 	path string,

@@ -25,6 +25,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.err = nil
 
+	case resourcesLoadedMsg:
+		m.resources = msg.resources
+		m.resourceCursor = 0
+		m.screen = resourcesScreen
+		m.loading = false
+		m.err = nil
+
 	case errMsg:
 		m.loading = false
 		m.err = msg.err
@@ -35,7 +42,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "esc":
-			if m.screen == environmentsScreen {
+			switch m.screen {
+			case resourcesScreen:
+				m.screen = environmentsScreen
+				m.resources = nil
+				m.resourceCursor = 0
+				m.loading = false
+				m.err = nil
+
+			case environmentsScreen:
 				m.screen = projectsScreen
 				m.project = nil
 				m.environmentCursor = 0
@@ -51,6 +66,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.loadProjects()
 			}
 
+			if m.screen == resourcesScreen &&
+				m.project != nil &&
+				len(m.project.Environments) > 0 {
+				environment := m.project.Environments[m.environmentCursor]
+				return m, m.loadResources(environment.ID)
+			}
+
 			if m.project != nil {
 				return m, m.loadProject(m.project.UUID)
 			}
@@ -60,14 +82,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 
-			if m.screen == projectsScreen &&
-				len(m.projects) > 0 {
-				project := m.projects[m.projectCursor]
+			switch m.screen {
+			case projectsScreen:
+				if len(m.projects) == 0 {
+					break
+				}
 
+				project := m.projects[m.projectCursor]
 				m.loading = true
 				m.err = nil
 
 				return m, m.loadProject(project.UUID)
+
+			case environmentsScreen:
+				if m.project == nil ||
+					len(m.project.Environments) == 0 {
+					break
+				}
+
+				environment := m.project.Environments[m.environmentCursor]
+				m.loading = true
+				m.err = nil
+
+				return m, m.loadResources(environment.ID)
 			}
 
 		case "up", "k":
@@ -107,6 +144,13 @@ func (m *Model) moveCursor(change int) {
 			next < len(m.project.Environments) {
 			m.environmentCursor = next
 		}
+
+	case resourcesScreen:
+		next := m.resourceCursor + change
+
+		if next >= 0 && next < len(m.resources) {
+			m.resourceCursor = next
+		}
 	}
 }
 
@@ -117,6 +161,9 @@ func (m *Model) moveToFirst() {
 
 	case environmentsScreen:
 		m.environmentCursor = 0
+
+	case resourcesScreen:
+		m.resourceCursor = 0
 	}
 }
 
@@ -132,6 +179,11 @@ func (m *Model) moveToLast() {
 			len(m.project.Environments) > 0 {
 			m.environmentCursor =
 				len(m.project.Environments) - 1
+		}
+
+	case resourcesScreen:
+		if len(m.resources) > 0 {
+			m.resourceCursor = len(m.resources) - 1
 		}
 	}
 }

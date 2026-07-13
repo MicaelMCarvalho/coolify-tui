@@ -24,6 +24,18 @@ var (
 
 	footerStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241"))
+
+	runningStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("42"))
+
+	stoppedStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("196"))
+
+	unknownStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("220"))
+
+	typeStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("81"))
 )
 
 func (m Model) View() string {
@@ -36,6 +48,9 @@ func (m Model) View() string {
 	}
 
 	switch m.screen {
+	case resourcesScreen:
+		return m.resourcesView()
+
 	case environmentsScreen:
 		return m.environmentsView()
 
@@ -92,7 +107,7 @@ func (m Model) projectsView() string {
 	view.WriteString(
 		footerStyle.Render(
 			fmt.Sprintf(
-				"%d/%d • j/k move • enter open • r refresh • q quit",
+				"%d/%d • j/k move • enter open • esc back • r refresh • q quit",
 				m.projectCursor+1,
 				len(m.projects),
 			),
@@ -174,15 +189,114 @@ func (m Model) environmentsView() string {
 	return view.String()
 }
 
+func (m Model) resourcesView() string {
+	var view strings.Builder
+
+	if m.project == nil ||
+		len(m.project.Environments) == 0 {
+		return "No environment selected."
+	}
+
+	environment := m.project.Environments[m.environmentCursor]
+
+	title := fmt.Sprintf(
+		"Coolify / %s / Environments / %s / Resources",
+		m.project.Name,
+		environment.Name,
+	)
+
+	view.WriteString(titleStyle.Render(title))
+	view.WriteString("\n\n")
+
+	if len(m.resources) == 0 {
+		view.WriteString("No resources found.\n\n")
+		view.WriteString(
+			footerStyle.Render(
+				"esc back • r refresh • q quit",
+			),
+		)
+		return view.String()
+	}
+
+	start, end := m.visibleRange(
+		m.resourceCursor,
+		len(m.resources),
+	)
+
+	for index := start; index < end; index++ {
+		resource := m.resources[index]
+
+		cursor := "  "
+		name := resource.Name
+
+		if index == m.resourceCursor {
+			cursor = "› "
+			name = selectedStyle.Render(name)
+		}
+
+		view.WriteString(cursor)
+		view.WriteString(name)
+		view.WriteString(" ")
+		view.WriteString(
+			typeStyle.Render("[" + resource.Type + "]"),
+		)
+		view.WriteString(" ")
+		view.WriteString(renderStatus(resource.Status))
+		view.WriteString("\n")
+	}
+
+	view.WriteString("\n")
+	view.WriteString(
+		footerStyle.Render(
+			fmt.Sprintf(
+				"%d/%d • j/k move • esc back • r refresh • q quit",
+				m.resourceCursor+1,
+				len(m.resources),
+			),
+		),
+	)
+
+	return view.String()
+}
+
+func renderStatus(status string) string {
+	lowerStatus := strings.ToLower(status)
+
+	switch {
+	case strings.HasPrefix(lowerStatus, "running"):
+		return runningStyle.Render("● " + status)
+
+	case strings.Contains(lowerStatus, "exited"),
+		strings.Contains(lowerStatus, "unhealthy"),
+		strings.Contains(lowerStatus, "stopped"):
+		return stoppedStyle.Render("● " + status)
+
+	default:
+		return unknownStyle.Render("● " + status)
+	}
+}
+
 func (m Model) loadingView() string {
 	title := "Coolify / Projects"
 
-	if m.screen == environmentsScreen &&
-		m.project != nil {
-		title = fmt.Sprintf(
-			"Coolify / %s / Environments",
-			m.project.Name,
-		)
+	if m.project != nil {
+		switch m.screen {
+		case environmentsScreen:
+			title = fmt.Sprintf(
+				"Coolify / %s / Environments",
+				m.project.Name,
+			)
+
+		case resourcesScreen:
+			if len(m.project.Environments) > 0 {
+				environment := m.project.Environments[m.environmentCursor]
+				title = fmt.Sprintf(
+					"Coolify / %s / Environments / %s / Resources",
+					m.project.Name,
+					environment.Name,
+				)
+			}
+		}
 	}
 
 	return titleStyle.Render(title) +

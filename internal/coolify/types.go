@@ -39,6 +39,17 @@ type ProjectDetails struct {
 	UpdatedAt    *time.Time    `json:"updated_at"`
 }
 
+type Resource struct {
+	ID            int     `json:"id"`
+	UUID          string  `json:"uuid"`
+	Name          string  `json:"name"`
+	Type          string  `json:"type"`
+	Status        string  `json:"status"`
+	EnvironmentID int     `json:"environment_id"`
+	Description   *string `json:"description"`
+	FQDN          *string `json:"fqdn"`
+}
+
 type APIError struct {
 	Message string `json:"message"`
 }
