@@ -54,6 +54,9 @@ func (m Model) View() string {
 	case environmentsScreen:
 		return m.environmentsView()
 
+	case resourceDetailsScreen:
+		return m.resourceDetailsView()
+
 	default:
 		return m.projectsView()
 	}
@@ -249,10 +252,65 @@ func (m Model) resourcesView() string {
 	view.WriteString(
 		footerStyle.Render(
 			fmt.Sprintf(
-				"%d/%d • j/k move • esc back • r refresh • q quit",
+				"%d/%d • j/k move • enter details • esc back • r refresh • q quit",
 				m.resourceCursor+1,
 				len(m.resources),
 			),
+		),
+	)
+
+	return view.String()
+}
+
+func (m Model) resourceDetailsView() string {
+	resource := m.selectedResource()
+	if resource == nil {
+		return "No resource selected."
+	}
+
+	var view strings.Builder
+
+	title := fmt.Sprintf(
+		"Coolify / %s / Environments / %s / Resources / %s",
+		m.project.Name,
+		m.project.Environments[m.environmentCursor].Name,
+		resource.Name,
+	)
+
+	view.WriteString(titleStyle.Render(title))
+	view.WriteString("\n\n")
+
+	writeDetail := func(label string, value string) {
+		view.WriteString(
+			descriptionStyle.Render(label + ": "),
+		)
+		view.WriteString(value)
+		view.WriteString("\n")
+	}
+
+	writeDetail("Name", resource.Name)
+	writeDetail("Type", resource.Type)
+	writeDetail("Status", renderStatus(resource.Status))
+	writeDetail("UUID", resource.UUID)
+	writeDetail(
+		"Environment ID",
+		fmt.Sprintf("%d", resource.EnvironmentID),
+	)
+
+	if resource.Description != nil &&
+		*resource.Description != "" {
+		writeDetail("Description", *resource.Description)
+	}
+
+	if resource.FQDN != nil &&
+		*resource.FQDN != "" {
+		writeDetail("FQDN", *resource.FQDN)
+	}
+
+	view.WriteString("\n")
+	view.WriteString(
+		footerStyle.Render(
+			"esc back • r refresh • q quit",
 		),
 	)
 

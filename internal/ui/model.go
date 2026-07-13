@@ -13,6 +13,7 @@ const (
 	projectsScreen screen = iota
 	environmentsScreen
 	resourcesScreen
+	resourceDetailsScreen
 )
 
 type projectsLoadedMsg struct {
@@ -83,6 +84,16 @@ func (m Model) loadProject(uuid string) tea.Cmd {
 		}
 		return projectLoadedMsg{project: project}
 	}
+}
+
+func (m Model) selectedResource() *coolify.Resource {
+	if len(m.resources) == 0 ||
+		m.resourceCursor < 0 ||
+		m.resourceCursor >= len(m.resources) {
+		return nil
+	}
+
+	return &m.resources[m.resourceCursor]
 }
 
 func (m Model) loadResources(environmentID int) tea.Cmd {

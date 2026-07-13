@@ -56,6 +56,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.environmentCursor = 0
 				m.loading = false
 				m.err = nil
+
+			case resourceDetailsScreen:
+				m.screen = resourcesScreen
+				m.loading = false
+				m.err = nil
 			}
 
 		case "r":
@@ -105,6 +110,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.err = nil
 
 				return m, m.loadResources(environment.ID)
+
+			case resourcesScreen:
+				if m.selectedResource() != nil {
+					m.screen = resourceDetailsScreen
+				}
 			}
 
 		case "up", "k":
