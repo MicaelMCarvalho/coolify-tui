@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 var (
@@ -69,9 +70,18 @@ func (m Model) View() string {
 	remainingRightHeight :=
 		contentHeight - commandHeight
 
-	detailsHeight := remainingRightHeight / 2
-	deploymentsHeight :=
+	detailsHeight := max(
+		8,
+		remainingRightHeight/4,
+	)
+	remainingListHeight :=
 		remainingRightHeight - detailsHeight
+
+	environmentVariableHeight :=
+		remainingListHeight / 2
+
+	deploymentsHeight :=
+		remainingListHeight - environmentVariableHeight
 
 	leftColumn := lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -99,6 +109,10 @@ func (m Model) View() string {
 			rightWidth,
 			detailsHeight,
 		),
+		m.environmentVariablesPane(
+			rightWidth,
+			environmentVariableHeight,
+		),
 		m.deploymentsPane(
 			rightWidth,
 			deploymentsHeight,
@@ -116,7 +130,7 @@ func (m Model) View() string {
 	)
 
 	footer := footerStyle.Render(
-		"tab/shift+tab panel • 1-6 jump • j/k move • r refresh • q quit",
+		"tab/shift+tab panel • 1-7 jump • j/k move • v reveal env • r refresh • q quit",
 	)
 
 	return lipgloss.JoinVertical(
@@ -157,12 +171,14 @@ func renderList(
 	items []string,
 	cursor int,
 	maxRows int,
+	maxWidth int,
 ) string {
 	if len(items) == 0 {
 		return descriptionStyle.Render("No items")
 	}
 
 	maxRows = max(1, maxRows)
+	maxWidth = max(4, maxWidth)
 
 	start := 0
 
@@ -179,7 +195,11 @@ func renderList(
 
 	for index := start; index < end; index++ {
 		prefix := "  "
-		item := items[index]
+		item := ansi.Truncate(
+			items[index],
+			maxWidth-2,
+			"…",
+		)
 
 		if index == cursor {
 			prefix = "› "
@@ -223,6 +243,7 @@ func (m Model) teamsPane(
 			items,
 			m.teamCursor,
 			height-3,
+			width-4,
 		),
 		width,
 		height,
@@ -255,6 +276,7 @@ func (m Model) projectsPane(
 			items,
 			m.projectCursor,
 			height-3,
+			width-4,
 		),
 		width,
 		height,
@@ -294,6 +316,7 @@ func (m Model) environmentsPane(
 			items,
 			m.environmentCursor,
 			height-3,
+			width-4,
 		),
 		width,
 		height,
@@ -337,6 +360,7 @@ func (m Model) resourcesPane(
 			items,
 			m.resourceCursor,
 			height-3,
+			width-4,
 		),
 		width,
 		height,
@@ -418,6 +442,106 @@ func (m Model) detailsPane(
 	)
 }
 
+func (m Model) environmentVariablesPane(
+	width int,
+	height int,
+) string {
+	resource := m.selectedResource()
+
+	if resource == nil ||
+		!strings.EqualFold(
+			resource.Type,
+			"application",
+		) {
+		return m.renderPane(
+			environmentVariablesPanel,
+			"[6] Environment Variables",
+			descriptionStyle.Render(
+				"Select an application",
+			),
+			width,
+			height,
+		)
+	}
+
+	items := make(
+		[]string,
+		0,
+		len(m.environmentVariables),
+	)
+
+	for _, variable := range m.environmentVariables {
+		value := "••••••••"
+
+		if m.revealEnvironmentValues {
+			value = variable.Value
+
+			if value == "" {
+				value = variable.RealValue
+			}
+			value = singleLine(value)
+
+			if value == "" {
+				if variable.IsShownOnce {
+					value = "(hidden by Coolify)"
+				} else {
+					value = "(empty)"
+				}
+
+			}
+		}
+
+		flags := make([]string, 0, 3)
+
+		if variable.IsBuildTime {
+			flags = append(flags, "build")
+		}
+
+		if variable.IsCoolify {
+			flags = append(flags, "coolify")
+		}
+
+		if variable.IsRuntime {
+			flags = append(flags, "runtime")
+		}
+
+		if variable.IsPreview {
+			flags = append(flags, "preview")
+		}
+
+		item := variable.Key + "=" + value
+
+		if len(flags) > 0 {
+			item += descriptionStyle.Render(
+				" [" + strings.Join(flags, ", ") + "]",
+			)
+		}
+		items = append(items, item)
+	}
+
+	title := fmt.Sprintf(
+		"[6] Environment Variables (%d)",
+		len(m.environmentVariables),
+	)
+
+	if m.revealEnvironmentValues {
+		title += " (values revealed)"
+	}
+
+	return m.renderPane(
+		environmentVariablesPanel,
+		title,
+		renderList(
+			items,
+			m.environmentVariablesCursor,
+			height-3,
+			width-4,
+		),
+		width,
+		height,
+	)
+}
+
 func (m Model) deploymentsPane(
 	width int,
 	height int,
@@ -448,7 +572,7 @@ func (m Model) deploymentsPane(
 	}
 
 	title := fmt.Sprintf(
-		"[6] Deployments (%d/%d)",
+		"[7] Deployments (%d/%d)",
 		len(m.deployments),
 		m.deploymentCount,
 	)
@@ -460,6 +584,7 @@ func (m Model) deploymentsPane(
 			items,
 			m.deploymentCursor,
 			height-3,
+			width-4,
 		),
 		width,
 		height,

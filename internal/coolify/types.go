@@ -73,6 +73,22 @@ type DeploymentList struct {
 	Deployments []Deployment `json:"deployments"`
 }
 
+type EnvironmentVariable struct {
+	UUID        string  `json:"uuid"`
+	Key         string  `json:"key"`
+	Value       string  `json:"value"`
+	RealValue   string  `json:"real_value"`
+	Comment     *string `json:"comment"`
+	IsBuildTime bool    `json:"is_buildtime"`
+	IsRuntime   bool    `json:"is_runtime"`
+	IsPreview   bool    `json:"is_preview"`
+	IsLiteral   bool    `json:"is_literal"`
+	IsMultiline bool    `json:"is_multiline"`
+	IsShared    bool    `json:"is_shared"`
+	IsShownOnce bool    `json:"is_shown_once"`
+	IsCoolify   bool    `json:"is_coolify"`
+}
+
 type APIError struct {
 	Message string `json:"message"`
 }

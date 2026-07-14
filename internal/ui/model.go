@@ -15,6 +15,7 @@ const (
 	environmentsPanel
 	resourcesPanel
 	detailsPanel
+	environmentVariablesPanel
 	deploymentsPanel
 )
 
@@ -34,6 +35,11 @@ type projectLoadedMsg struct {
 type resourcesLoadedMsg struct {
 	environmentID int
 	resources     []coolify.Resource
+}
+
+type environmentVariablesLoadedMsg struct {
+	resourceUUID string
+	variables    []coolify.EnvironmentVariable
 }
 
 type deploymentsLoadedMsg struct {
@@ -67,6 +73,10 @@ type Model struct {
 	deploymentCursor int
 	deploymentSkip   int
 	deploymentTake   int
+
+	environmentVariables       []coolify.EnvironmentVariable
+	environmentVariablesCursor int
+	revealEnvironmentValues    bool
 
 	width   int
 	height  int
@@ -217,6 +227,26 @@ func (m Model) loadDeployments(
 			resourceUUID: applicationUUID,
 			result:       result,
 			skip:         skip,
+		}
+	}
+}
+
+func (m Model) loadEnvironmentVariables(
+	applicationUUID string,
+) tea.Cmd {
+	return func() tea.Msg {
+		variables, err :=
+			m.client.ListApplicationEnvironmentVariables(
+				context.Background(),
+				applicationUUID,
+			)
+		if err != nil {
+			return errMsg{err: err}
+		}
+
+		return environmentVariablesLoadedMsg{
+			resourceUUID: applicationUUID,
+			variables:    variables,
 		}
 	}
 }

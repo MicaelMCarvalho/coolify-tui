@@ -78,9 +78,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		m.deploymentSkip = 0
 
-		return m, m.loadDeployments(
-			resource.UUID,
-			0,
+		return m, tea.Batch(
+			m.loadEnvironmentVariables(resource.UUID),
+			m.loadDeployments(resource.UUID, 0),
 		)
 
 	case deploymentsLoadedMsg:
@@ -97,6 +97,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.deploymentCount = msg.result.Count
 		m.deploymentSkip = msg.skip
 		m.deploymentCursor = 0
+		m.loading = false
+		m.err = nil
+
+	case environmentVariablesLoadedMsg:
+		resource := m.selectedResource()
+
+		if resource == nil ||
+			resource.UUID != msg.resourceUUID {
+			return m, nil
+		}
+
+		m.environmentVariables = msg.variables
+		m.environmentVariablesCursor = 0
 		m.loading = false
 		m.err = nil
 
@@ -120,11 +133,11 @@ func (m Model) handleKey(
 
 	case "tab":
 		m.activePanel =
-			(m.activePanel + 1) % 6
+			(m.activePanel + 1) % 7
 
 	case "shift+tab", "backtab":
 		m.activePanel =
-			(m.activePanel + 5) % 6
+			(m.activePanel + 6) % 7
 
 	case "1":
 		m.activePanel = teamsPanel
@@ -142,6 +155,9 @@ func (m Model) handleKey(
 		m.activePanel = detailsPanel
 
 	case "6":
+		m.activePanel = environmentVariablesPanel
+
+	case "7":
 		m.activePanel = deploymentsPanel
 
 	case "enter":
@@ -177,6 +193,11 @@ func (m Model) handleKey(
 	case "p":
 		cmd := m.previousDeploymentPage()
 		return m, cmd
+
+	case "v":
+		if m.activePanel == environmentVariablesPanel {
+			m.revealEnvironmentValues = !m.revealEnvironmentValues
+		}
 	}
 
 	return m, nil
@@ -282,10 +303,18 @@ func (m *Model) moveCursor(
 
 		m.loading = true
 
-		return m.loadDeployments(
-			resource.UUID,
-			0,
+		return tea.Batch(
+			m.loadEnvironmentVariables(resource.UUID),
+			m.loadDeployments(resource.UUID, 0),
 		)
+
+	case environmentVariablesPanel:
+		next := m.environmentVariablesCursor + change
+
+		if next >= 0 &&
+			next < len(m.environmentVariables) {
+			m.environmentVariablesCursor = next
+		}
 
 	case deploymentsPanel:
 		next := m.deploymentCursor + change
@@ -400,10 +429,22 @@ func (m *Model) moveToBoundary(
 
 		m.loading = true
 
-		return m.loadDeployments(
-			resource.UUID,
-			0,
+		return tea.Batch(
+			m.loadEnvironmentVariables(resource.UUID),
+			m.loadDeployments(resource.UUID, 0),
 		)
+
+	case environmentVariablesPanel:
+		if len(m.environmentVariables) == 0 {
+			return nil
+		}
+
+		if first {
+			m.environmentVariablesCursor = 0
+		} else {
+			m.environmentVariablesCursor =
+				len(m.environmentVariables) - 1
+		}
 
 	case deploymentsPanel:
 		if len(m.deployments) == 0 {
@@ -449,6 +490,22 @@ func (m *Model) refreshActivePanel() tea.Cmd {
 		}
 
 		return m.loadResources(environment.ID)
+
+	case environmentVariablesPanel:
+		resource := m.selectedResource()
+
+		if resource == nil ||
+			!strings.EqualFold(
+				resource.Type,
+				"application",
+			) {
+			m.loading = false
+			return nil
+		}
+
+		return m.loadEnvironmentVariables(
+			resource.UUID,
+		)
 
 	case deploymentsPanel:
 		resource := m.selectedResource()
@@ -634,6 +691,10 @@ func (m *Model) clearAfterEnvironment() {
 }
 
 func (m *Model) clearAfterResource() {
+	m.environmentVariables = nil
+	m.environmentVariablesCursor = 0
+	m.revealEnvironmentValues = false
+
 	m.deployments = nil
 	m.deploymentCount = 0
 	m.deploymentCursor = 0

@@ -175,6 +175,37 @@ func (c *Client) ListApplicationDeployments(
 	return deployments, nil
 }
 
+func (c *Client) ListApplicationEnvironmentVariables(
+	ctx context.Context,
+	applicationUUID string,
+) ([]EnvironmentVariable, error) {
+	applicationUUID = strings.TrimSpace(applicationUUID)
+
+	if applicationUUID == "" {
+		return nil, fmt.Errorf("application UUID is required")
+	}
+
+	path := "/applications/" +
+		url.PathEscape(applicationUUID) +
+		"/envs"
+
+	var variables []EnvironmentVariable
+
+	if err := c.get(ctx, path, &variables); err != nil {
+		return nil, fmt.Errorf(
+			"list application environment variables: %w",
+			err,
+		)
+	}
+
+	sort.SliceStable(variables, func(i, j int) bool {
+		return strings.ToLower(variables[i].Key) <
+			strings.ToLower(variables[j].Key)
+	})
+
+	return variables, nil
+}
+
 func (c *Client) get(
 	ctx context.Context,
 	path string,
