@@ -195,8 +195,9 @@ func (m Model) handleKey(
 		return m, cmd
 
 	case "v":
-		if m.activePanel == environmentVariablesPanel {
-			m.revealEnvironmentValues = !m.revealEnvironmentValues
+		if len(m.environmentVariables) > 0 {
+			m.revealEnvironmentValues =
+				!m.revealEnvironmentValues
 		}
 	}
 
