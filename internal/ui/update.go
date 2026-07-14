@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/micaelmcarvalho/coolify-tui/internal/coolify"
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -12,36 +13,90 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
-	case projectsLoadedMsg:
-		m.projects = msg.projects
+	case teamsLoadedMsg:
+		m.applyTeams(msg.teams)
 		m.loading = false
 		m.err = nil
 
-		if m.projectCursor >= len(m.projects) {
-			m.projectCursor = max(0, len(m.projects)-1)
+	case projectsLoadedMsg:
+		m.applyProjects(msg.projects)
+		m.err = nil
+
+		project := m.selectedProject()
+		if project == nil {
+			m.loading = false
+			return m, nil
 		}
 
+		m.loading = true
+		return m, m.loadProject(project.UUID)
+
 	case projectLoadedMsg:
-		project := msg.project
-		m.project = &project
-		m.screen = environmentsScreen
-		m.environmentCursor = 0
-		m.loading = false
+		selected := m.selectedProject()
+
+		// Ignore stale responses caused by quick navigation.
+		if selected == nil ||
+			selected.UUID != msg.projectUUID {
+			return m, nil
+		}
+
+		m.applyProject(msg.project)
 		m.err = nil
+
+		environment := m.selectedEnvironment()
+		if environment == nil {
+			m.loading = false
+			return m, nil
+		}
+
+		m.loading = true
+		return m, m.loadResources(environment.ID)
 
 	case resourcesLoadedMsg:
-		m.resources = msg.resources
-		m.resourceCursor = 0
-		m.screen = resourcesScreen
-		m.loading = false
+		environment := m.selectedEnvironment()
+
+		// Ignore a response for an environment that is no
+		// longer selected.
+		if environment == nil ||
+			environment.ID != msg.environmentID {
+			return m, nil
+		}
+
+		m.applyResources(msg.resources)
 		m.err = nil
 
+		resource := m.selectedResource()
+		if resource == nil ||
+			!strings.EqualFold(
+				resource.Type,
+				"application",
+			) {
+			m.loading = false
+			return m, nil
+		}
+
+		m.loading = true
+		m.deploymentSkip = 0
+
+		return m, m.loadDeployments(
+			resource.UUID,
+			0,
+		)
+
 	case deploymentsLoadedMsg:
+		resource := m.selectedResource()
+
+		// Ignore an older deployment response if the user
+		// has selected a different resource.
+		if resource == nil ||
+			resource.UUID != msg.resourceUUID {
+			return m, nil
+		}
+
 		m.deployments = msg.result.Deployments
 		m.deploymentCount = msg.result.Count
 		m.deploymentSkip = msg.skip
 		m.deploymentCursor = 0
-		m.screen = deploymentsScreen
 		m.loading = false
 		m.err = nil
 
@@ -50,266 +105,537 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "ctrl+c":
-			return m, tea.Quit
-
-		case "esc":
-			switch m.screen {
-			case resourcesScreen:
-				m.screen = environmentsScreen
-				m.resources = nil
-				m.resourceCursor = 0
-				m.loading = false
-				m.err = nil
-
-			case environmentsScreen:
-				m.screen = projectsScreen
-				m.project = nil
-				m.environmentCursor = 0
-				m.loading = false
-				m.err = nil
-
-			case resourceDetailsScreen:
-				m.screen = resourcesScreen
-				m.loading = false
-				m.err = nil
-
-			case deploymentsScreen:
-				m.screen = resourceDetailsScreen
-				m.deployments = nil
-				m.deploymentCount = 0
-				m.deploymentCursor = 0
-				m.deploymentSkip = 0
-				m.loading = false
-				m.err = nil
-
-			case deploymentDetailsScreen:
-				m.screen = deploymentsScreen
-				m.loading = false
-				m.err = nil
-			}
-
-		case "r":
-			m.loading = true
-			m.err = nil
-
-			if m.screen == projectsScreen {
-				return m, m.loadProjects()
-			}
-
-			if m.screen == resourcesScreen &&
-				m.project != nil &&
-				len(m.project.Environments) > 0 {
-				environment := m.project.Environments[m.environmentCursor]
-				return m, m.loadResources(environment.ID)
-			}
-
-			if m.screen == deploymentsScreen {
-				resource := m.selectedResource()
-
-				if resource != nil {
-					return m, m.loadDeployments(
-						resource.UUID,
-						m.deploymentSkip,
-					)
-				}
-			}
-
-			if m.project != nil {
-				return m, m.loadProject(m.project.UUID)
-			}
-
-		case "enter":
-			if m.loading || m.err != nil {
-				break
-			}
-
-			switch m.screen {
-			case projectsScreen:
-				if len(m.projects) == 0 {
-					break
-				}
-
-				project := m.projects[m.projectCursor]
-				m.loading = true
-				m.err = nil
-
-				return m, m.loadProject(project.UUID)
-
-			case environmentsScreen:
-				if m.project == nil ||
-					len(m.project.Environments) == 0 {
-					break
-				}
-
-				environment := m.project.Environments[m.environmentCursor]
-				m.loading = true
-				m.err = nil
-
-				return m, m.loadResources(environment.ID)
-
-			case resourcesScreen:
-				if m.selectedResource() != nil {
-					m.screen = resourceDetailsScreen
-				}
-
-			case deploymentsScreen:
-				if m.selectedDeployment() != nil {
-					m.screen = deploymentDetailsScreen
-				}
-			}
-
-		case "up", "k":
-			m.moveCursor(-1)
-
-		case "down", "j":
-			m.moveCursor(1)
-
-		case "g":
-			m.moveToFirst()
-
-		case "G":
-			m.moveToLast()
-
-		case "d":
-			if m.screen != resourceDetailsScreen ||
-				m.loading ||
-				m.err != nil {
-				break
-			}
-
-			resource := m.selectedResource()
-			if resource == nil ||
-				!strings.EqualFold(resource.Type, "application") {
-				break
-			}
-
-			m.loading = true
-			m.err = nil
-			m.deploymentSkip = 0
-			return m, m.loadDeployments(resource.UUID, 0)
-
-		case "n":
-			if m.screen != deploymentsScreen ||
-				m.loading {
-				break
-			}
-			nextSkip := m.deploymentSkip + m.deploymentTake
-			if nextSkip >= m.deploymentCount {
-				break
-			}
-			resource := m.selectedResource()
-			if resource == nil {
-				break
-			}
-			m.loading = true
-			m.err = nil
-			return m, m.loadDeployments(
-				resource.UUID,
-				nextSkip,
-			)
-
-		case "p":
-			if m.screen != deploymentsScreen ||
-				m.loading {
-				break
-			}
-			prevSkip := m.deploymentSkip - m.deploymentTake
-			if prevSkip < 0 {
-				break
-			}
-			resource := m.selectedResource()
-			if resource == nil {
-				break
-			}
-			m.loading = true
-			m.err = nil
-			return m, m.loadDeployments(
-				resource.UUID,
-				prevSkip,
-			)
-		}
+		return m.handleKey(msg)
 	}
 
 	return m, nil
 }
 
-func (m *Model) moveCursor(change int) {
-	switch m.screen {
-	case projectsScreen:
-		next := m.projectCursor + change
+func (m Model) handleKey(
+	msg tea.KeyMsg,
+) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
 
-		if next >= 0 && next < len(m.projects) {
-			m.projectCursor = next
+	case "tab":
+		m.activePanel =
+			(m.activePanel + 1) % 6
+
+	case "shift+tab", "backtab":
+		m.activePanel =
+			(m.activePanel + 5) % 6
+
+	case "1":
+		m.activePanel = teamsPanel
+
+	case "2":
+		m.activePanel = projectsPanel
+
+	case "3":
+		m.activePanel = environmentsPanel
+
+	case "4":
+		m.activePanel = resourcesPanel
+
+	case "5":
+		m.activePanel = detailsPanel
+
+	case "6":
+		m.activePanel = deploymentsPanel
+
+	case "enter":
+		m.focusNextPanel()
+
+	case "esc":
+		m.focusPreviousPanel()
+
+	case "up", "k":
+		cmd := m.moveCursor(-1)
+		return m, cmd
+
+	case "down", "j":
+		cmd := m.moveCursor(1)
+		return m, cmd
+
+	case "g", "home":
+		cmd := m.moveToBoundary(true)
+		return m, cmd
+
+	case "G", "end":
+		cmd := m.moveToBoundary(false)
+		return m, cmd
+
+	case "r":
+		cmd := m.refreshActivePanel()
+		return m, cmd
+
+	case "n":
+		cmd := m.nextDeploymentPage()
+		return m, cmd
+
+	case "p":
+		cmd := m.previousDeploymentPage()
+		return m, cmd
+	}
+
+	return m, nil
+}
+
+func (m *Model) focusNextPanel() {
+	if m.activePanel < deploymentsPanel {
+		m.activePanel++
+	}
+}
+
+func (m *Model) focusPreviousPanel() {
+	if m.activePanel > teamsPanel {
+		m.activePanel--
+	}
+}
+
+func (m *Model) moveCursor(
+	change int,
+) tea.Cmd {
+	switch m.activePanel {
+	case teamsPanel:
+		next := m.teamCursor + change
+
+		if next >= 0 && next < len(m.teams) {
+			m.teamCursor = next
 		}
 
-	case environmentsScreen:
+		// A Coolify API token is scoped to one team, so
+		// changing this cursor cannot switch API context yet.
+		return nil
+
+	case projectsPanel:
+		next := m.projectCursor + change
+
+		if next < 0 ||
+			next >= len(m.projects) ||
+			next == m.projectCursor {
+			return nil
+		}
+
+		m.projectCursor = next
+		m.clearAfterProject()
+		m.loading = true
+		m.err = nil
+
+		project := m.selectedProject()
+		if project == nil {
+			m.loading = false
+			return nil
+		}
+
+		return m.loadProject(project.UUID)
+
+	case environmentsPanel:
 		if m.project == nil {
-			return
+			return nil
 		}
 
 		next := m.environmentCursor + change
 
-		if next >= 0 &&
-			next < len(m.project.Environments) {
-			m.environmentCursor = next
+		if next < 0 ||
+			next >= len(m.project.Environments) ||
+			next == m.environmentCursor {
+			return nil
 		}
 
-	case resourcesScreen:
+		m.environmentCursor = next
+		m.clearAfterEnvironment()
+		m.loading = true
+		m.err = nil
+
+		environment := m.selectedEnvironment()
+		if environment == nil {
+			m.loading = false
+			return nil
+		}
+
+		return m.loadResources(environment.ID)
+
+	case resourcesPanel:
 		next := m.resourceCursor + change
 
-		if next >= 0 && next < len(m.resources) {
-			m.resourceCursor = next
+		if next < 0 ||
+			next >= len(m.resources) ||
+			next == m.resourceCursor {
+			return nil
 		}
 
-	case deploymentsScreen:
+		m.resourceCursor = next
+		m.clearAfterResource()
+		m.err = nil
+
+		resource := m.selectedResource()
+		if resource == nil ||
+			!strings.EqualFold(
+				resource.Type,
+				"application",
+			) {
+			m.loading = false
+			return nil
+		}
+
+		m.loading = true
+
+		return m.loadDeployments(
+			resource.UUID,
+			0,
+		)
+
+	case deploymentsPanel:
 		next := m.deploymentCursor + change
 
-		if next >= 0 && next < len(m.deployments) {
+		if next >= 0 &&
+			next < len(m.deployments) {
 			m.deploymentCursor = next
 		}
 	}
+
+	return nil
 }
 
-func (m *Model) moveToFirst() {
-	switch m.screen {
-	case projectsScreen:
-		m.projectCursor = 0
-
-	case environmentsScreen:
-		m.environmentCursor = 0
-
-	case resourcesScreen:
-		m.resourceCursor = 0
-
-	case deploymentsScreen:
-		m.deploymentCursor = 0
-	}
-}
-
-func (m *Model) moveToLast() {
-	switch m.screen {
-	case projectsScreen:
-		if len(m.projects) > 0 {
-			m.projectCursor = len(m.projects) - 1
+func (m *Model) moveToBoundary(
+	first bool,
+) tea.Cmd {
+	switch m.activePanel {
+	case teamsPanel:
+		if len(m.teams) == 0 {
+			return nil
 		}
 
-	case environmentsScreen:
-		if m.project != nil &&
-			len(m.project.Environments) > 0 {
-			m.environmentCursor =
+		if first {
+			m.teamCursor = 0
+		} else {
+			m.teamCursor = len(m.teams) - 1
+		}
+
+	case projectsPanel:
+		if len(m.projects) == 0 {
+			return nil
+		}
+
+		target := 0
+		if !first {
+			target = len(m.projects) - 1
+		}
+
+		if target == m.projectCursor {
+			return nil
+		}
+
+		m.projectCursor = target
+		m.clearAfterProject()
+		m.loading = true
+		m.err = nil
+
+		project := m.selectedProject()
+		if project == nil {
+			m.loading = false
+			return nil
+		}
+
+		return m.loadProject(project.UUID)
+
+	case environmentsPanel:
+		if m.project == nil ||
+			len(m.project.Environments) == 0 {
+			return nil
+		}
+
+		target := 0
+		if !first {
+			target =
 				len(m.project.Environments) - 1
 		}
 
-	case resourcesScreen:
-		if len(m.resources) > 0 {
-			m.resourceCursor = len(m.resources) - 1
+		if target == m.environmentCursor {
+			return nil
 		}
 
-	case deploymentsScreen:
-		if len(m.deployments) > 0 {
-			m.deploymentCursor = len(m.deployments) - 1
+		m.environmentCursor = target
+		m.clearAfterEnvironment()
+		m.loading = true
+		m.err = nil
+
+		environment := m.selectedEnvironment()
+		if environment == nil {
+			m.loading = false
+			return nil
+		}
+
+		return m.loadResources(environment.ID)
+
+	case resourcesPanel:
+		if len(m.resources) == 0 {
+			return nil
+		}
+
+		target := 0
+		if !first {
+			target = len(m.resources) - 1
+		}
+
+		if target == m.resourceCursor {
+			return nil
+		}
+
+		m.resourceCursor = target
+		m.clearAfterResource()
+		m.err = nil
+
+		resource := m.selectedResource()
+		if resource == nil ||
+			!strings.EqualFold(
+				resource.Type,
+				"application",
+			) {
+			m.loading = false
+			return nil
+		}
+
+		m.loading = true
+
+		return m.loadDeployments(
+			resource.UUID,
+			0,
+		)
+
+	case deploymentsPanel:
+		if len(m.deployments) == 0 {
+			return nil
+		}
+
+		if first {
+			m.deploymentCursor = 0
+		} else {
+			m.deploymentCursor =
+				len(m.deployments) - 1
 		}
 	}
+
+	return nil
+}
+
+func (m *Model) refreshActivePanel() tea.Cmd {
+	m.err = nil
+	m.loading = true
+
+	switch m.activePanel {
+	case teamsPanel:
+		return m.loadTeams()
+
+	case projectsPanel:
+		return m.loadProjects()
+
+	case environmentsPanel:
+		project := m.selectedProject()
+		if project == nil {
+			m.loading = false
+			return nil
+		}
+
+		return m.loadProject(project.UUID)
+
+	case resourcesPanel, detailsPanel:
+		environment := m.selectedEnvironment()
+		if environment == nil {
+			m.loading = false
+			return nil
+		}
+
+		return m.loadResources(environment.ID)
+
+	case deploymentsPanel:
+		resource := m.selectedResource()
+		if resource == nil ||
+			!strings.EqualFold(
+				resource.Type,
+				"application",
+			) {
+			m.loading = false
+			return nil
+		}
+
+		return m.loadDeployments(
+			resource.UUID,
+			m.deploymentSkip,
+		)
+	}
+
+	m.loading = false
+	return nil
+}
+
+func (m *Model) nextDeploymentPage() tea.Cmd {
+	if m.activePanel != deploymentsPanel ||
+		m.loading {
+		return nil
+	}
+
+	nextSkip :=
+		m.deploymentSkip + m.deploymentTake
+
+	if nextSkip >= m.deploymentCount {
+		return nil
+	}
+
+	resource := m.selectedResource()
+	if resource == nil ||
+		!strings.EqualFold(
+			resource.Type,
+			"application",
+		) {
+		return nil
+	}
+
+	m.loading = true
+	m.err = nil
+
+	return m.loadDeployments(
+		resource.UUID,
+		nextSkip,
+	)
+}
+
+func (m *Model) previousDeploymentPage() tea.Cmd {
+	if m.activePanel != deploymentsPanel ||
+		m.loading ||
+		m.deploymentSkip == 0 {
+		return nil
+	}
+
+	resource := m.selectedResource()
+	if resource == nil ||
+		!strings.EqualFold(
+			resource.Type,
+			"application",
+		) {
+		return nil
+	}
+
+	previousSkip := max(
+		0,
+		m.deploymentSkip-m.deploymentTake,
+	)
+
+	m.loading = true
+	m.err = nil
+
+	return m.loadDeployments(
+		resource.UUID,
+		previousSkip,
+	)
+}
+
+func (m *Model) applyTeams(
+	teams []coolify.Team,
+) {
+	selectedID := -1
+
+	if selected := m.selectedTeam(); selected != nil {
+		selectedID = selected.ID
+	}
+
+	m.teams = teams
+	m.teamCursor = 0
+
+	for index, team := range m.teams {
+		if team.ID == selectedID {
+			m.teamCursor = index
+			break
+		}
+	}
+}
+
+func (m *Model) applyProjects(
+	projects []coolify.Project,
+) {
+	selectedUUID := ""
+
+	if selected := m.selectedProject(); selected != nil {
+		selectedUUID = selected.UUID
+	}
+
+	m.projects = projects
+	m.projectCursor = 0
+
+	for index, project := range m.projects {
+		if project.UUID == selectedUUID {
+			m.projectCursor = index
+			break
+		}
+	}
+
+	m.clearAfterProject()
+}
+
+func (m *Model) applyProject(
+	project coolify.ProjectDetails,
+) {
+	selectedEnvironmentID := -1
+
+	if selected := m.selectedEnvironment(); selected != nil {
+		selectedEnvironmentID = selected.ID
+	}
+
+	projectCopy := project
+	m.project = &projectCopy
+	m.environmentCursor = 0
+
+	for index, environment := range m.project.Environments {
+		if environment.ID == selectedEnvironmentID {
+			m.environmentCursor = index
+			break
+		}
+	}
+
+	m.clearAfterEnvironment()
+}
+
+func (m *Model) applyResources(
+	resources []coolify.Resource,
+) {
+	selectedUUID := ""
+
+	if selected := m.selectedResource(); selected != nil {
+		selectedUUID = selected.UUID
+	}
+
+	m.resources = resources
+	m.resourceCursor = 0
+
+	for index, resource := range m.resources {
+		if resource.UUID == selectedUUID {
+			m.resourceCursor = index
+			break
+		}
+	}
+
+	m.clearAfterResource()
+}
+
+func (m *Model) clearAfterProject() {
+	m.project = nil
+	m.environmentCursor = 0
+	m.resources = nil
+	m.resourceCursor = 0
+	m.clearAfterResource()
+}
+
+func (m *Model) clearAfterEnvironment() {
+	m.resources = nil
+	m.resourceCursor = 0
+	m.clearAfterResource()
+}
+
+func (m *Model) clearAfterResource() {
+	m.deployments = nil
+	m.deploymentCount = 0
+	m.deploymentCursor = 0
+	m.deploymentSkip = 0
 }

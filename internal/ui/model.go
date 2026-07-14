@@ -7,32 +7,39 @@ import (
 	"github.com/micaelmcarvalho/coolify-tui/internal/coolify"
 )
 
-type screen int
+type panel int
 
 const (
-	projectsScreen screen = iota
-	environmentsScreen
-	resourcesScreen
-	resourceDetailsScreen
-	deploymentsScreen
-	deploymentDetailsScreen
+	teamsPanel panel = iota
+	projectsPanel
+	environmentsPanel
+	resourcesPanel
+	detailsPanel
+	deploymentsPanel
 )
+
+type teamsLoadedMsg struct {
+	teams []coolify.Team
+}
 
 type projectsLoadedMsg struct {
 	projects []coolify.Project
 }
 
 type projectLoadedMsg struct {
-	project coolify.ProjectDetails
+	projectUUID string
+	project     coolify.ProjectDetails
 }
 
 type resourcesLoadedMsg struct {
-	resources []coolify.Resource
+	environmentID int
+	resources     []coolify.Resource
 }
 
 type deploymentsLoadedMsg struct {
-	result coolify.DeploymentList
-	skip   int
+	resourceUUID string
+	result       coolify.DeploymentList
+	skip         int
 }
 
 type errMsg struct {
@@ -40,8 +47,11 @@ type errMsg struct {
 }
 
 type Model struct {
-	client *coolify.Client
-	screen screen
+	client      *coolify.Client
+	activePanel panel
+
+	teams      []coolify.Team
+	teamCursor int
 
 	projects      []coolify.Project
 	projectCursor int
@@ -67,23 +77,48 @@ type Model struct {
 func NewModel(client *coolify.Client) Model {
 	return Model{
 		client:         client,
-		screen:         projectsScreen,
+		activePanel:    teamsPanel,
 		loading:        true,
 		deploymentTake: 20,
+		teams:          []coolify.Team{},
+		projects:       []coolify.Project{},
+		resources:      []coolify.Resource{},
+		deployments:    []coolify.Deployment{},
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return m.loadProjects()
+	return tea.Batch(
+		m.loadTeams(),
+		m.loadProjects(),
+	)
+}
+
+func (m Model) loadTeams() tea.Cmd {
+	return func() tea.Msg {
+		teams, err := m.client.ListTeams(
+			context.Background(),
+		)
+		if err != nil {
+			return errMsg{err: err}
+		}
+
+		return teamsLoadedMsg{teams: teams}
+	}
 }
 
 func (m Model) loadProjects() tea.Cmd {
 	return func() tea.Msg {
-		projects, err := m.client.ListProjects(context.Background())
+		projects, err := m.client.ListProjects(
+			context.Background(),
+		)
 		if err != nil {
-			return errMsg{err}
+			return errMsg{err: err}
 		}
-		return projectsLoadedMsg{projects}
+
+		return projectsLoadedMsg{
+			projects: projects,
+		}
 	}
 }
 
@@ -94,10 +129,45 @@ func (m Model) loadProject(uuid string) tea.Cmd {
 			uuid,
 		)
 		if err != nil {
-			return errMsg{err}
+			return errMsg{err: err}
 		}
-		return projectLoadedMsg{project: project}
+
+		return projectLoadedMsg{
+			projectUUID: uuid,
+			project:     project,
+		}
 	}
+}
+
+func (m Model) selectedTeam() *coolify.Team {
+	if len(m.teams) == 0 ||
+		m.teamCursor < 0 ||
+		m.teamCursor >= len(m.teams) {
+		return nil
+	}
+
+	return &m.teams[m.teamCursor]
+}
+
+func (m Model) selectedProject() *coolify.Project {
+	if len(m.projects) == 0 ||
+		m.projectCursor < 0 ||
+		m.projectCursor >= len(m.projects) {
+		return nil
+	}
+
+	return &m.projects[m.projectCursor]
+}
+
+func (m Model) selectedEnvironment() *coolify.Environment {
+	if m.project == nil ||
+		len(m.project.Environments) == 0 ||
+		m.environmentCursor < 0 ||
+		m.environmentCursor >= len(m.project.Environments) {
+		return nil
+	}
+
+	return &m.project.Environments[m.environmentCursor]
 }
 
 func (m Model) selectedResource() *coolify.Resource {
@@ -110,7 +180,9 @@ func (m Model) selectedResource() *coolify.Resource {
 	return &m.resources[m.resourceCursor]
 }
 
-func (m Model) loadResources(environmentID int) tea.Cmd {
+func (m Model) loadResources(
+	environmentID int,
+) tea.Cmd {
 	return func() tea.Msg {
 		resources, err := m.client.ListResources(
 			context.Background(),
@@ -119,7 +191,11 @@ func (m Model) loadResources(environmentID int) tea.Cmd {
 		if err != nil {
 			return errMsg{err: err}
 		}
-		return resourcesLoadedMsg{resources: resources}
+
+		return resourcesLoadedMsg{
+			environmentID: environmentID,
+			resources:     resources,
+		}
 	}
 }
 
@@ -138,8 +214,9 @@ func (m Model) loadDeployments(
 			return errMsg{err: err}
 		}
 		return deploymentsLoadedMsg{
-			result: result,
-			skip:   skip,
+			resourceUUID: applicationUUID,
+			result:       result,
+			skip:         skip,
 		}
 	}
 }

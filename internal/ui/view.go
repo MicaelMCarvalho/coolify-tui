@@ -39,468 +39,547 @@ var (
 )
 
 func (m Model) View() string {
-	if m.loading {
-		return m.loadingView()
+	if m.width < 80 || m.height < 24 {
+		return fmt.Sprintf(
+			"Terminal too small: %dx%d\nMinimum recommended size: 80x24",
+			m.width,
+			m.height,
+		)
 	}
 
-	if m.err != nil {
-		return m.errorView()
-	}
+	footerHeight := 1
+	contentHeight := m.height - footerHeight
 
-	switch m.screen {
-	case resourcesScreen:
-		return m.resourcesView()
+	leftWidth := max(30, m.width/3)
+	rightWidth := m.width - leftWidth
 
-	case environmentsScreen:
-		return m.environmentsView()
+	teamsHeight := 5
+	environmentsHeight := 6
 
-	case resourceDetailsScreen:
-		return m.resourceDetailsView()
+	remainingLeftHeight :=
+		contentHeight -
+			teamsHeight -
+			environmentsHeight
 
-	case deploymentsScreen:
-		return m.deploymentsView()
+	projectsHeight := remainingLeftHeight / 2
+	resourcesHeight :=
+		remainingLeftHeight - projectsHeight
 
-	case deploymentDetailsScreen:
-		return m.deploymentDetailsView()
+	commandHeight := 5
+	remainingRightHeight :=
+		contentHeight - commandHeight
 
-	default:
-		return m.projectsView()
-	}
+	detailsHeight := remainingRightHeight / 2
+	deploymentsHeight :=
+		remainingRightHeight - detailsHeight
+
+	leftColumn := lipgloss.JoinVertical(
+		lipgloss.Left,
+		m.teamsPane(
+			leftWidth,
+			teamsHeight,
+		),
+		m.projectsPane(
+			leftWidth,
+			projectsHeight,
+		),
+		m.environmentsPane(
+			leftWidth,
+			environmentsHeight,
+		),
+		m.resourcesPane(
+			leftWidth,
+			resourcesHeight,
+		),
+	)
+
+	rightColumn := lipgloss.JoinVertical(
+		lipgloss.Left,
+		m.detailsPane(
+			rightWidth,
+			detailsHeight,
+		),
+		m.deploymentsPane(
+			rightWidth,
+			deploymentsHeight,
+		),
+		m.commandLogPane(
+			rightWidth,
+			commandHeight,
+		),
+	)
+
+	content := lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		leftColumn,
+		rightColumn,
+	)
+
+	footer := footerStyle.Render(
+		"tab/shift+tab panel • 1-6 jump • j/k move • r refresh • q quit",
+	)
+
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		content,
+		footer,
+	)
 }
 
-func (m Model) projectsView() string {
-	var view strings.Builder
+func (m Model) renderPane(
+	target panel,
+	title string,
+	body string,
+	width int,
+	height int,
+) string {
+	borderColor := lipgloss.Color("240")
+	renderedTitle := descriptionStyle.Render(title)
 
-	view.WriteString(titleStyle.Render("Coolify / Projects"))
-	view.WriteString("\n\n")
-
-	if len(m.projects) == 0 {
-		view.WriteString("No projects found.\n\n")
-		view.WriteString(
-			footerStyle.Render("r refresh • q quit"),
-		)
-		return view.String()
+	if m.activePanel == target {
+		borderColor = lipgloss.Color("42")
+		renderedTitle = selectedStyle.Render(title)
 	}
 
-	start, end := m.visibleRange(
-		m.projectCursor,
+	style := lipgloss.NewStyle().
+		Width(max(1, width-2)).
+		Height(max(1, height-2)).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(0, 1)
+
+	return style.Render(
+		renderedTitle + "\n" + body,
+	)
+}
+
+func renderList(
+	items []string,
+	cursor int,
+	maxRows int,
+) string {
+	if len(items) == 0 {
+		return descriptionStyle.Render("No items")
+	}
+
+	maxRows = max(1, maxRows)
+
+	start := 0
+
+	if cursor >= maxRows {
+		start = cursor - maxRows + 1
+	}
+
+	end := min(
+		len(items),
+		start+maxRows,
+	)
+
+	var output strings.Builder
+
+	for index := start; index < end; index++ {
+		prefix := "  "
+		item := items[index]
+
+		if index == cursor {
+			prefix = "› "
+			item = selectedStyle.Render(item)
+		}
+
+		output.WriteString(prefix)
+		output.WriteString(item)
+		output.WriteString("\n")
+	}
+
+	return strings.TrimRight(
+		output.String(),
+		"\n",
+	)
+}
+
+func (m Model) teamsPane(
+	width int,
+	height int,
+) string {
+	items := make(
+		[]string,
+		0,
+		len(m.teams),
+	)
+
+	for _, team := range m.teams {
+		items = append(items, team.Name)
+	}
+
+	title := fmt.Sprintf(
+		"[1] Teams (%d)",
+		len(m.teams),
+	)
+
+	return m.renderPane(
+		teamsPanel,
+		title,
+		renderList(
+			items,
+			m.teamCursor,
+			height-3,
+		),
+		width,
+		height,
+	)
+}
+
+func (m Model) projectsPane(
+	width int,
+	height int,
+) string {
+	items := make(
+		[]string,
+		0,
 		len(m.projects),
 	)
 
-	for index := start; index < end; index++ {
-		project := m.projects[index]
-
-		cursor := "  "
-		name := project.Name
-
-		if index == m.projectCursor {
-			cursor = "› "
-			name = selectedStyle.Render(name)
-		}
-
-		view.WriteString(cursor)
-		view.WriteString(name)
-
-		if project.Description != "" {
-			view.WriteString(
-				descriptionStyle.Render(
-					" — " + project.Description,
-				),
-			)
-		}
-
-		view.WriteString("\n")
-	}
-
-	view.WriteString("\n")
-	view.WriteString(
-		footerStyle.Render(
-			fmt.Sprintf(
-				"%d/%d • j/k move • enter open • esc back • r refresh • q quit",
-				m.projectCursor+1,
-				len(m.projects),
-			),
-		),
-	)
-
-	return view.String()
-}
-
-func (m Model) environmentsView() string {
-	var view strings.Builder
-
-	if m.project == nil {
-		return "No project selected."
+	for _, project := range m.projects {
+		items = append(items, project.Name)
 	}
 
 	title := fmt.Sprintf(
-		"Coolify / %s / Environments",
-		m.project.Name,
+		"[2] Projects (%d)",
+		len(m.projects),
 	)
 
-	view.WriteString(titleStyle.Render(title))
-	view.WriteString("\n\n")
-
-	environments := m.project.Environments
-
-	if len(environments) == 0 {
-		view.WriteString("No environments found.\n\n")
-		view.WriteString(
-			footerStyle.Render(
-				"esc back • r refresh • q quit",
-			),
-		)
-		return view.String()
-	}
-
-	start, end := m.visibleRange(
-		m.environmentCursor,
-		len(environments),
-	)
-
-	for index := start; index < end; index++ {
-		environment := environments[index]
-
-		cursor := "  "
-		name := environment.Name
-
-		if index == m.environmentCursor {
-			cursor = "› "
-			name = selectedStyle.Render(name)
-		}
-
-		view.WriteString(cursor)
-		view.WriteString(name)
-
-		if environment.Description != nil &&
-			*environment.Description != "" {
-			view.WriteString(
-				descriptionStyle.Render(
-					" — " + *environment.Description,
-				),
-			)
-		}
-
-		view.WriteString("\n")
-	}
-
-	view.WriteString("\n")
-	view.WriteString(
-		footerStyle.Render(
-			fmt.Sprintf(
-				"%d/%d • j/k move • esc back • r refresh • q quit",
-				m.environmentCursor+1,
-				len(environments),
-			),
+	return m.renderPane(
+		projectsPanel,
+		title,
+		renderList(
+			items,
+			m.projectCursor,
+			height-3,
 		),
+		width,
+		height,
 	)
-
-	return view.String()
 }
 
-func (m Model) resourcesView() string {
-	var view strings.Builder
+func (m Model) environmentsPane(
+	width int,
+	height int,
+) string {
+	var items []string
 
-	if m.project == nil ||
-		len(m.project.Environments) == 0 {
-		return "No environment selected."
+	if m.project != nil {
+		items = make(
+			[]string,
+			0,
+			len(m.project.Environments),
+		)
+
+		for _, environment := range m.project.Environments {
+			items = append(
+				items,
+				environment.Name,
+			)
+		}
 	}
-
-	environment := m.project.Environments[m.environmentCursor]
 
 	title := fmt.Sprintf(
-		"Coolify / %s / Environments / %s / Resources",
-		m.project.Name,
-		environment.Name,
+		"[3] Environments (%d)",
+		len(items),
 	)
 
-	view.WriteString(titleStyle.Render(title))
-	view.WriteString("\n\n")
+	return m.renderPane(
+		environmentsPanel,
+		title,
+		renderList(
+			items,
+			m.environmentCursor,
+			height-3,
+		),
+		width,
+		height,
+	)
+}
 
-	if len(m.resources) == 0 {
-		view.WriteString("No resources found.\n\n")
-		view.WriteString(
-			footerStyle.Render(
-				"esc back • r refresh • q quit",
-			),
-		)
-		return view.String()
-	}
-
-	start, end := m.visibleRange(
-		m.resourceCursor,
+func (m Model) resourcesPane(
+	width int,
+	height int,
+) string {
+	items := make(
+		[]string,
+		0,
 		len(m.resources),
 	)
 
-	for index := start; index < end; index++ {
-		resource := m.resources[index]
-
-		cursor := "  "
-		name := resource.Name
-
-		if index == m.resourceCursor {
-			cursor = "› "
-			name = selectedStyle.Render(name)
-		}
-
-		view.WriteString(cursor)
-		view.WriteString(name)
-		view.WriteString(" ")
-		view.WriteString(
-			typeStyle.Render("[" + resource.Type + "]"),
+	for _, resource := range m.resources {
+		resourceType := typeStyle.Render(
+			"[" + resource.Type + "]",
 		)
-		view.WriteString(" ")
-		view.WriteString(renderStatus(resource.Status))
-		view.WriteString("\n")
-	}
 
-	view.WriteString("\n")
-	view.WriteString(
-		footerStyle.Render(
-			fmt.Sprintf(
-				"%d/%d • j/k move • enter details • esc back • r refresh • q quit",
-				m.resourceCursor+1,
-				len(m.resources),
-			),
-		),
-	)
-
-	return view.String()
-}
-
-func (m Model) resourceDetailsView() string {
-	resource := m.selectedResource()
-	if resource == nil {
-		return "No resource selected."
-	}
-
-	var view strings.Builder
-
-	title := fmt.Sprintf(
-		"Coolify / %s / Environments / %s / Resources / %s",
-		m.project.Name,
-		m.project.Environments[m.environmentCursor].Name,
-		resource.Name,
-	)
-
-	view.WriteString(titleStyle.Render(title))
-	view.WriteString("\n\n")
-
-	writeDetail := func(label string, value string) {
-		view.WriteString(
-			descriptionStyle.Render(label + ": "),
+		item := fmt.Sprintf(
+			"%s %s %s",
+			resourceType,
+			resource.Name,
+			renderStatus(resource.Status),
 		)
-		view.WriteString(value)
-		view.WriteString("\n")
-	}
 
-	writeDetail("Name", resource.Name)
-	writeDetail("Type", resource.Type)
-	writeDetail("Status", renderStatus(resource.Status))
-	writeDetail("UUID", resource.UUID)
-	writeDetail(
-		"Environment ID",
-		fmt.Sprintf("%d", resource.EnvironmentID),
-	)
-
-	if resource.Description != nil &&
-		*resource.Description != "" {
-		writeDetail("Description", *resource.Description)
-	}
-
-	if resource.FQDN != nil &&
-		*resource.FQDN != "" {
-		writeDetail("FQDN", *resource.FQDN)
-	}
-
-	footer := "esc back • q quit"
-
-	if strings.EqualFold(resource.Type, "application") {
-		footer = "d deployments • esc back • q quit"
-	}
-
-	view.WriteString("\n")
-	view.WriteString(footerStyle.Render(footer))
-
-	return view.String()
-}
-
-func (m Model) deploymentsView() string {
-	var view strings.Builder
-
-	resource := m.selectedResource()
-	if resource == nil {
-		return "No application selected."
+		items = append(items, item)
 	}
 
 	title := fmt.Sprintf(
-		"Coolify / %s / Deployments",
-		resource.Name,
+		"[4] Resources (%d)",
+		len(m.resources),
 	)
 
-	view.WriteString(titleStyle.Render(title))
-	view.WriteString("\n\n")
-
-	if len(m.deployments) == 0 {
-		view.WriteString("No deployments found.\n\n")
-		view.WriteString(
-			footerStyle.Render(
-				"esc back • r refresh • q quit",
-			),
-		)
-		return view.String()
-	}
-
-	start, end := m.visibleRange(
-		m.deploymentCursor,
-		len(m.deployments),
-	)
-
-	for index := start; index < end; index++ {
-		deployment := m.deployments[index]
-
-		cursor := "  "
-		label := shortCommit(deployment.Commit)
-
-		if deployment.CommitMessage != nil &&
-			*deployment.CommitMessage != "" {
-			label += " — " + singleLine(
-				*deployment.CommitMessage,
-			)
-		}
-
-		if index == m.deploymentCursor {
-			cursor = "› "
-			label = selectedStyle.Render(label)
-		}
-
-		view.WriteString(cursor)
-		view.WriteString(renderDeploymentStatus(
-			deployment.Status,
-		))
-		view.WriteString("  ")
-		view.WriteString(label)
-		view.WriteString("\n")
-	}
-
-	view.WriteString("\n")
-	currentPage := 1
-	totalPages := 1
-
-	if m.deploymentTake > 0 {
-		currentPage =
-			(m.deploymentSkip / m.deploymentTake) + 1
-
-		if m.deploymentCount > 0 {
-			totalPages =
-				(m.deploymentCount + m.deploymentTake - 1) /
-					m.deploymentTake
-		}
-	}
-	view.WriteString(
-		footerStyle.Render(
-			fmt.Sprintf(
-				"page %d/%d • %d total • j/k move • enter details • n/p page • esc back • r refresh • q quit",
-				currentPage,
-				totalPages,
-				m.deploymentCount,
-			),
+	return m.renderPane(
+		resourcesPanel,
+		title,
+		renderList(
+			items,
+			m.resourceCursor,
+			height-3,
 		),
+		width,
+		height,
 	)
-
-	return view.String()
 }
 
-func (m Model) deploymentDetailsView() string {
-	deployment := m.selectedDeployment()
-	if deployment == nil {
-		return "No deployment selected."
+func (m Model) detailsPane(
+	width int,
+	height int,
+) string {
+	resource := m.selectedResource()
+
+	if resource == nil {
+		return m.renderPane(
+			detailsPanel,
+			"[5] Resource Details",
+			descriptionStyle.Render(
+				"Select a resource",
+			),
+			width,
+			height,
+		)
 	}
 
-	var view strings.Builder
+	var body strings.Builder
 
-	view.WriteString(
-		titleStyle.Render("Coolify / Deployment"),
-	)
-	view.WriteString("\n\n")
-
-	writeDetail := func(label string, value string) {
+	writeDetail := func(
+		label string,
+		value string,
+	) {
 		if strings.TrimSpace(value) == "" {
 			return
 		}
 
-		view.WriteString(
-			descriptionStyle.Render(label + ": "),
+		body.WriteString(
+			descriptionStyle.Render(
+				label + ": ",
+			),
 		)
-		view.WriteString(value)
-		view.WriteString("\n")
+		body.WriteString(value)
+		body.WriteString("\n")
 	}
 
+	writeDetail("Name", resource.Name)
+	writeDetail("Type", resource.Type)
 	writeDetail(
 		"Status",
-		renderDeploymentStatus(deployment.Status),
+		renderStatus(resource.Status),
 	)
-	writeDetail("Application", deployment.ApplicationName)
-	writeDetail("Deployment UUID", deployment.DeploymentUUID)
-	writeDetail("Commit", deployment.Commit)
-	writeDetail("Server", deployment.ServerName)
-	writeDetail("Created", deployment.CreatedAt)
-	writeDetail("Updated", deployment.UpdatedAt)
+	writeDetail("UUID", resource.UUID)
+	writeDetail(
+		"Environment ID",
+		fmt.Sprintf(
+			"%d",
+			resource.EnvironmentID,
+		),
+	)
 
-	if deployment.CommitMessage != nil {
+	if resource.Description != nil {
 		writeDetail(
-			"Commit message",
-			singleLine(*deployment.CommitMessage),
+			"Description",
+			*resource.Description,
 		)
 	}
 
-	if deployment.FinishedAt != nil {
-		writeDetail("Finished", *deployment.FinishedAt)
+	if resource.FQDN != nil {
+		writeDetail("URL", *resource.FQDN)
 	}
 
-	if deployment.DeploymentURL != nil {
-		writeDetail("Deployment URL", *deployment.DeploymentURL)
-	}
-
-	if deployment.ForceRebuild {
-		writeDetail("Force rebuild", "yes")
-	}
-
-	if deployment.RestartOnly {
-		writeDetail("Restart only", "yes")
-	}
-
-	if deployment.Rollback {
-		writeDetail("Rollback", "yes")
-	}
-
-	view.WriteString("\n")
-	view.WriteString(
-		footerStyle.Render("esc back • q quit"),
+	return m.renderPane(
+		detailsPanel,
+		"[5] Resource Details",
+		strings.TrimRight(
+			body.String(),
+			"\n",
+		),
+		width,
+		height,
 	)
-
-	return view.String()
 }
 
-func renderDeploymentStatus(status string) string {
+func (m Model) deploymentsPane(
+	width int,
+	height int,
+) string {
+	items := make(
+		[]string,
+		0,
+		len(m.deployments),
+	)
+
+	for _, deployment := range m.deployments {
+		item := fmt.Sprintf(
+			"%s %s",
+			renderDeploymentStatus(
+				deployment.Status,
+			),
+			shortCommit(deployment.Commit),
+		)
+
+		if deployment.CommitMessage != nil &&
+			*deployment.CommitMessage != "" {
+			item += " " + singleLine(
+				*deployment.CommitMessage,
+			)
+		}
+
+		items = append(items, item)
+	}
+
+	title := fmt.Sprintf(
+		"[6] Deployments (%d/%d)",
+		len(m.deployments),
+		m.deploymentCount,
+	)
+
+	return m.renderPane(
+		deploymentsPanel,
+		title,
+		renderList(
+			items,
+			m.deploymentCursor,
+			height-3,
+		),
+		width,
+		height,
+	)
+}
+
+func (m Model) commandLogPane(
+	width int,
+	height int,
+) string {
+	message := "Ready"
+
+	if m.loading {
+		message = unknownStyle.Render(
+			"Loading…",
+		)
+	}
+
+	if m.err != nil {
+		message = errorStyle.Render(
+			"Error: " + m.err.Error(),
+		)
+	}
+
+	// panel(-1) means this informational panel
+	// is never directly focused.
+	return m.renderPane(
+		panel(-1),
+		"Command Log",
+		message,
+		width,
+		height,
+	)
+}
+
+func renderDeploymentStatus(
+	status string,
+) string {
 	lowerStatus := strings.ToLower(status)
 
 	switch {
-	case strings.Contains(lowerStatus, "finished"),
-		strings.Contains(lowerStatus, "success"):
-		return runningStyle.Render("● " + status)
+	case strings.Contains(
+		lowerStatus,
+		"finished",
+	),
+		strings.Contains(
+			lowerStatus,
+			"success",
+		):
+		return runningStyle.Render(
+			"● " + status,
+		)
 
-	case strings.Contains(lowerStatus, "failed"),
-		strings.Contains(lowerStatus, "error"):
-		return stoppedStyle.Render("● " + status)
+	case strings.Contains(
+		lowerStatus,
+		"failed",
+	),
+		strings.Contains(
+			lowerStatus,
+			"error",
+		):
+		return stoppedStyle.Render(
+			"● " + status,
+		)
 
-	case strings.Contains(lowerStatus, "progress"),
-		strings.Contains(lowerStatus, "queued"),
-		strings.Contains(lowerStatus, "running"):
-		return unknownStyle.Render("● " + status)
+	case strings.Contains(
+		lowerStatus,
+		"progress",
+	),
+		strings.Contains(
+			lowerStatus,
+			"queued",
+		),
+		strings.Contains(
+			lowerStatus,
+			"running",
+		):
+		return unknownStyle.Render(
+			"● " + status,
+		)
 
 	default:
-		return descriptionStyle.Render("● " + status)
+		return descriptionStyle.Render(
+			"● " + status,
+		)
+	}
+}
+
+func renderStatus(status string) string {
+	lowerStatus := strings.ToLower(status)
+
+	switch {
+	case strings.HasPrefix(
+		lowerStatus,
+		"running",
+	):
+		return runningStyle.Render(
+			"● " + status,
+		)
+
+	case strings.Contains(
+		lowerStatus,
+		"exited",
+	),
+		strings.Contains(
+			lowerStatus,
+			"unhealthy",
+		),
+		strings.Contains(
+			lowerStatus,
+			"stopped",
+		):
+		return stoppedStyle.Render(
+			"● " + status,
+		)
+
+	default:
+		return unknownStyle.Render(
+			"● " + status,
+		)
 	}
 }
 
@@ -519,80 +598,16 @@ func shortCommit(commit string) string {
 }
 
 func singleLine(value string) string {
-	value = strings.ReplaceAll(value, "\n", " ")
-	value = strings.ReplaceAll(value, "\r", " ")
+	value = strings.ReplaceAll(
+		value,
+		"\n",
+		" ",
+	)
+	value = strings.ReplaceAll(
+		value,
+		"\r",
+		" ",
+	)
 
 	return strings.TrimSpace(value)
-}
-
-func renderStatus(status string) string {
-	lowerStatus := strings.ToLower(status)
-
-	switch {
-	case strings.HasPrefix(lowerStatus, "running"):
-		return runningStyle.Render("● " + status)
-
-	case strings.Contains(lowerStatus, "exited"),
-		strings.Contains(lowerStatus, "unhealthy"),
-		strings.Contains(lowerStatus, "stopped"):
-		return stoppedStyle.Render("● " + status)
-
-	default:
-		return unknownStyle.Render("● " + status)
-	}
-}
-
-func (m Model) loadingView() string {
-	title := "Coolify / Projects"
-
-	if m.project != nil {
-		switch m.screen {
-		case environmentsScreen:
-			title = fmt.Sprintf(
-				"Coolify / %s / Environments",
-				m.project.Name,
-			)
-
-		case resourcesScreen:
-			if len(m.project.Environments) > 0 {
-				environment := m.project.Environments[m.environmentCursor]
-				title = fmt.Sprintf(
-					"Coolify / %s / Environments / %s / Resources",
-					m.project.Name,
-					environment.Name,
-				)
-			}
-		}
-	}
-
-	return titleStyle.Render(title) +
-		"\n\nLoading…\n\n" +
-		footerStyle.Render("q quit")
-}
-
-func (m Model) errorView() string {
-	return titleStyle.Render("Coolify") +
-		"\n\n" +
-		errorStyle.Render(fmt.Sprintf("Error: %v", m.err)) +
-		"\n\n" +
-		footerStyle.Render("r retry • esc back • q quit")
-}
-
-func (m Model) visibleRange(
-	cursor int,
-	total int,
-) (int, int) {
-	available := m.height - 6
-	if available < 1 {
-		available = 10
-	}
-
-	start := 0
-	if cursor >= available {
-		start = cursor - available + 1
-	}
-
-	end := min(total, start+available)
-
-	return start, end
 }
