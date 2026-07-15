@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -46,6 +47,10 @@ func (m Model) View() string {
 			m.width,
 			m.height,
 		)
+	}
+
+	if m.deploymentDetailsOpen {
+		return m.deploymentDetailsView()
 	}
 
 	footerHeight := 1
@@ -589,6 +594,236 @@ func (m Model) deploymentsPane(
 		width,
 		height,
 	)
+}
+
+func (m Model) deploymentDetailsView() string {
+	footer := footerStyle.Render(
+		"j/k scroll logs • g/G top/bottom • r refresh • esc back • q quit",
+	)
+
+	paneHeight := m.height - 1
+
+	if m.err != nil {
+		return lipgloss.JoinVertical(
+			lipgloss.Left,
+			m.renderPane(
+				deploymentsPanel,
+				"[7] Deployment Details",
+				errorStyle.Render(
+					"Error: "+m.err.Error(),
+				),
+				m.width,
+				paneHeight,
+			),
+			footer,
+		)
+	}
+
+	if m.deploymentDetails == nil {
+		return lipgloss.JoinVertical(
+			lipgloss.Left,
+			m.renderPane(
+				deploymentsPanel,
+				"[7] Deployment Details",
+				unknownStyle.Render("Loading…"),
+				m.width,
+				paneHeight,
+			),
+			footer,
+		)
+	}
+
+	deployment := m.deploymentDetails
+
+	commitMessage := ""
+	if deployment.CommitMessage != nil {
+		commitMessage = singleLine(
+			*deployment.CommitMessage,
+		)
+	}
+
+	finishedAt := ""
+	if deployment.FinishedAt != nil {
+		finishedAt = *deployment.FinishedAt
+	}
+
+	bodyLines := []string{
+		"Status: " + renderDeploymentStatus(
+			deployment.Status,
+		),
+		"Application: " + deployment.ApplicationName,
+		"Deployment UUID: " +
+			deployment.DeploymentUUID,
+		"Commit: " + deployment.Commit,
+		"Commit message: " + commitMessage,
+		"Server: " + deployment.ServerName,
+		"Created: " + deployment.CreatedAt,
+		"Updated: " + deployment.UpdatedAt,
+		"Finished: " + finishedAt,
+		"",
+		titleStyle.Render("Logs"),
+	}
+
+	// renderPane reserves one row for its title and two
+	// rows for its border.
+	availableLogRows :=
+		deploymentLogPageSize(
+			m.height,
+		)
+
+	logLines := deploymentLogLines(
+		deployment.Logs,
+	)
+
+	maxStart := max(
+		0,
+		len(logLines)-availableLogRows,
+	)
+
+	start := min(
+		m.deploymentLogOffset,
+		maxStart,
+	)
+
+	end := min(
+		len(logLines),
+		start+availableLogRows,
+	)
+
+	logHeading := "Logs (0 of 0)"
+
+	if len(logLines) > 0 {
+		logHeading = fmt.Sprintf(
+			"Logs (%d-%d of %d)",
+			start+1,
+			end,
+			len(logLines),
+		)
+	}
+
+	bodyLines[len(bodyLines)-1] =
+		titleStyle.Render(logHeading)
+
+	for _, line := range logLines[start:end] {
+		bodyLines = append(
+			bodyLines,
+			ansi.Truncate(
+				line,
+				max(4, m.width-6),
+				"…",
+			),
+		)
+	}
+
+	body := strings.Join(bodyLines, "\n")
+
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		m.renderPane(
+			deploymentsPanel,
+			"[7] Deployment Details",
+			body,
+			m.width,
+			paneHeight,
+		),
+		footer,
+	)
+}
+
+func deploymentLogLines(
+	raw json.RawMessage,
+) []string {
+	if len(raw) == 0 ||
+		string(raw) == "null" {
+		return []string{"No logs available"}
+	}
+
+	// Coolify can return logs as an encoded JSON string.
+	var encoded string
+	if err := json.Unmarshal(raw, &encoded); err == nil {
+		encoded = strings.TrimSpace(encoded)
+
+		if encoded == "" {
+			return []string{"No logs available"}
+		}
+
+		if json.Valid([]byte(encoded)) {
+			raw = json.RawMessage(encoded)
+		} else {
+			return splitLogLines(encoded)
+		}
+	}
+
+	var entries []struct {
+		Command   string `json:"command"`
+		Output    string `json:"output"`
+		Timestamp string `json:"timestamp"`
+		Hidden    bool   `json:"hidden"`
+	}
+
+	if err := json.Unmarshal(raw, &entries); err == nil {
+		lines := make([]string, 0)
+
+		for _, entry := range entries {
+			// Avoid showing Coolify commands explicitly marked
+			// as hidden because they may contain secrets.
+			if entry.Hidden {
+				continue
+			}
+
+			prefix := ""
+			if entry.Timestamp != "" {
+				prefix = entry.Timestamp + " "
+			}
+
+			outputLines := splitLogLines(entry.Output)
+
+			for _, line := range outputLines {
+				lines = append(
+					lines,
+					prefix+line,
+				)
+			}
+		}
+
+		if len(lines) == 0 {
+			return []string{"No visible logs available"}
+		}
+
+		return lines
+	}
+
+	return splitLogLines(string(raw))
+}
+
+func deploymentLogPageSize(
+	height int,
+) int {
+	paneHeight := height - 1
+	maxBodyRows := max(1, paneHeight-3)
+
+	const deploymentDetailsRows = 11
+
+	return max(
+		1,
+		maxBodyRows-deploymentDetailsRows,
+	)
+}
+
+func splitLogLines(value string) []string {
+	value = strings.ReplaceAll(
+		value,
+		"\r\n",
+		"\n",
+	)
+
+	value = strings.TrimSpace(value)
+
+	if value == "" {
+		return []string{"No logs available"}
+	}
+
+	return strings.Split(value, "\n")
 }
 
 func (m Model) commandLogPane(

@@ -48,6 +48,11 @@ type deploymentsLoadedMsg struct {
 	skip         int
 }
 
+type deploymentDetailsLoadedMsg struct {
+	resourceUUID string
+	deployment   coolify.DeploymentDetails
+}
+
 type errMsg struct {
 	err error
 }
@@ -73,6 +78,10 @@ type Model struct {
 	deploymentCursor int
 	deploymentSkip   int
 	deploymentTake   int
+
+	deploymentDetailsOpen bool
+	deploymentDetails     *coolify.DeploymentDetails
+	deploymentLogOffset   int
 
 	environmentVariables       []coolify.EnvironmentVariable
 	environmentVariablesCursor int
@@ -227,6 +236,25 @@ func (m Model) loadDeployments(
 			resourceUUID: applicationUUID,
 			result:       result,
 			skip:         skip,
+		}
+	}
+}
+
+func (m Model) loadDeploymentDetails(
+	deploymentUUID string,
+) tea.Cmd {
+	return func() tea.Msg {
+		details, err := m.client.GetDeployment(
+			context.Background(),
+			deploymentUUID,
+		)
+		if err != nil {
+			return errMsg{err: err}
+		}
+
+		return deploymentDetailsLoadedMsg{
+			resourceUUID: deploymentUUID,
+			deployment:   details,
 		}
 	}
 }

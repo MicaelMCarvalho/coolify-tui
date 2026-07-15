@@ -175,6 +175,30 @@ func (c *Client) ListApplicationDeployments(
 	return deployments, nil
 }
 
+func (c *Client) GetDeployment(
+	ctx context.Context,
+	deploymentUUID string,
+) (DeploymentDetails, error) {
+	deploymentUUID = strings.TrimSpace(deploymentUUID)
+
+	if deploymentUUID == "" {
+		return DeploymentDetails{},
+			fmt.Errorf("deployment UUID is required")
+	}
+
+	path := "/deployments/" +
+		url.PathEscape(deploymentUUID)
+
+	var deployment DeploymentDetails
+
+	if err := c.get(ctx, path, &deployment); err != nil {
+		return DeploymentDetails{},
+			fmt.Errorf("get deployment: %w", err)
+	}
+
+	return deployment, nil
+}
+
 func (c *Client) ListApplicationEnvironmentVariables(
 	ctx context.Context,
 	applicationUUID string,

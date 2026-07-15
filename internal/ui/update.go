@@ -100,6 +100,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.err = nil
 
+	case deploymentDetailsLoadedMsg:
+		selected := m.selectedDeployment()
+
+		if !m.deploymentDetailsOpen ||
+			selected == nil ||
+			selected.DeploymentUUID != msg.deployment.DeploymentUUID {
+			return m, nil
+		}
+
+		details := msg.deployment
+		m.deploymentDetails = &details
+		m.deploymentLogOffset = 0
+		m.loading = false
+		m.err = nil
+
 	case environmentVariablesLoadedMsg:
 		resource := m.selectedResource()
 
@@ -127,6 +142,67 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) handleKey(
 	msg tea.KeyMsg,
 ) (tea.Model, tea.Cmd) {
+	if m.deploymentDetailsOpen {
+		switch msg.String() {
+		case "q", "ctrl+c":
+			return m, tea.Quit
+
+		case "esc":
+			m.deploymentDetailsOpen = false
+			m.deploymentDetails = nil
+			m.deploymentLogOffset = 0
+			m.loading = false
+			m.err = nil
+
+			return m, nil
+
+		case "up", "k":
+			if m.deploymentLogOffset > 0 {
+				m.deploymentLogOffset--
+			}
+
+		case "down", "j":
+			if m.deploymentDetails != nil {
+				lines := deploymentLogLines(
+					m.deploymentDetails.Logs,
+				)
+
+				if m.deploymentLogOffset <
+					max(0, len(lines)-1) {
+					m.deploymentLogOffset++
+				}
+			}
+
+		case "g", "home":
+			m.deploymentLogOffset = 0
+
+		case "G", "end":
+			if m.deploymentDetails != nil {
+				lines := deploymentLogLines(
+					m.deploymentDetails.Logs,
+				)
+
+				m.deploymentLogOffset =
+					max(0, len(lines)-1)
+			}
+
+		case "r":
+			selected := m.selectedDeployment()
+			if selected == nil {
+				return m, nil
+			}
+
+			m.loading = true
+			m.err = nil
+
+			return m, m.loadDeploymentDetails(
+				selected.DeploymentUUID,
+			)
+		}
+
+		return m, nil
+	}
+
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
@@ -161,6 +237,23 @@ func (m Model) handleKey(
 		m.activePanel = deploymentsPanel
 
 	case "enter":
+		if m.activePanel == deploymentsPanel {
+			deployment := m.selectedDeployment()
+			if deployment == nil {
+				return m, nil
+			}
+
+			m.deploymentDetailsOpen = true
+			m.deploymentDetails = nil
+			m.deploymentLogOffset = 0
+			m.loading = true
+			m.err = nil
+
+			return m, m.loadDeploymentDetails(
+				deployment.DeploymentUUID,
+			)
+		}
+
 		m.focusNextPanel()
 
 	case "esc":

@@ -1,6 +1,9 @@
 package coolify
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type Team struct {
 	ID           int        `json:"id"`
@@ -71,6 +74,20 @@ type Deployment struct {
 type DeploymentList struct {
 	Count       int          `json:"count"`
 	Deployments []Deployment `json:"deployments"`
+}
+
+type DeploymentDetails struct {
+	DeploymentUUID  string          `json:"deployment_uuid"`
+	ApplicationName string          `json:"application_name"`
+	Status          string          `json:"status"`
+	Commit          string          `json:"commit"`
+	CommitMessage   *string         `json:"commit_message"`
+	ServerName      string          `json:"server_name"`
+	DeploymentURL   *string         `json:"deployment_url"`
+	CreatedAt       string          `json:"created_at"`
+	UpdatedAt       string          `json:"updated_at"`
+	FinishedAt      *string         `json:"finished_at"`
+	Logs            json.RawMessage `json:"logs"`
 }
 
 type EnvironmentVariable struct {
