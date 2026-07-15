@@ -145,9 +145,6 @@ func filteredCursorPosition(
 			return position
 		}
 	}
-	if len(indices) > 0 {
-		return 0
-	}
 	return -1
 }
 
@@ -180,6 +177,16 @@ func nextFilteredIndex(
 		indices,
 		current,
 	)
+
+	// Current selection is not part of the filtered
+	// results. Enter the list from the appropriate end.
+	if position < 0 {
+		if change < 0 {
+			return indices[len(indices)-1], true
+		}
+
+		return indices[0], true
+	}
 
 	next := position + change
 

@@ -378,11 +378,17 @@ func (m *Model) moveCursor(
 			return nil
 		}
 
-		next := m.environmentCursor + change
+		indices := m.filteredIndices(
+			environmentsPanel,
+		)
 
-		if next < 0 ||
-			next >= len(m.project.Environments) ||
-			next == m.environmentCursor {
+		next, ok := nextFilteredIndex(
+			indices,
+			m.environmentCursor,
+			change,
+		)
+
+		if !ok || next == m.environmentCursor {
 			return nil
 		}
 
@@ -400,11 +406,17 @@ func (m *Model) moveCursor(
 		return m.loadResources(environment.ID)
 
 	case resourcesPanel:
-		next := m.resourceCursor + change
+		indices := m.filteredIndices(
+			resourcesPanel,
+		)
 
-		if next < 0 ||
-			next >= len(m.resources) ||
-			next == m.resourceCursor {
+		next, ok := nextFilteredIndex(
+			indices,
+			m.resourceCursor,
+			change,
+		)
+
+		if !ok || next == m.resourceCursor {
 			return nil
 		}
 
@@ -430,12 +442,21 @@ func (m *Model) moveCursor(
 		)
 
 	case environmentVariablesPanel:
-		next := m.environmentVariablesCursor + change
+		indices := m.filteredIndices(
+			environmentVariablesPanel,
+		)
 
-		if next >= 0 &&
-			next < len(m.environmentVariables) {
-			m.environmentVariablesCursor = next
+		next, ok := nextFilteredIndex(
+			indices,
+			m.environmentVariablesCursor,
+			change,
+		)
+
+		if !ok || next == m.environmentVariablesCursor {
+			return nil
 		}
+
+		m.environmentVariablesCursor = next
 
 	case deploymentsPanel:
 		next := m.deploymentCursor + change
@@ -496,15 +517,23 @@ func (m *Model) moveToBoundary(
 		return m.loadProject(project.UUID)
 
 	case environmentsPanel:
-		if m.project == nil ||
-			len(m.project.Environments) == 0 {
+		if m.project == nil {
 			return nil
 		}
 
-		target := 0
+		indices := m.filteredIndices(
+			environmentsPanel,
+		)
+
+		if len(indices) == 0 {
+			return nil
+		}
+
+		target := indices[0]
+
 		if !first {
 			target =
-				len(m.project.Environments) - 1
+				indices[len(indices)-1]
 		}
 
 		if target == m.environmentCursor {
@@ -525,13 +554,17 @@ func (m *Model) moveToBoundary(
 		return m.loadResources(environment.ID)
 
 	case resourcesPanel:
-		if len(m.resources) == 0 {
+		indices := m.filteredIndices(
+			resourcesPanel,
+		)
+		if len(indices) == 0 {
 			return nil
 		}
 
-		target := 0
+		target := indices[0]
+
 		if !first {
-			target = len(m.resources) - 1
+			target = indices[len(indices)-1]
 		}
 
 		if target == m.resourceCursor {
@@ -560,15 +593,20 @@ func (m *Model) moveToBoundary(
 		)
 
 	case environmentVariablesPanel:
-		if len(m.environmentVariables) == 0 {
+		indices := m.filteredIndices(
+			environmentVariablesPanel,
+		)
+
+		if len(indices) == 0 {
 			return nil
 		}
 
 		if first {
-			m.environmentVariablesCursor = 0
+			m.environmentVariablesCursor =
+				indices[0]
 		} else {
 			m.environmentVariablesCursor =
-				len(m.environmentVariables) - 1
+				indices[len(indices)-1]
 		}
 
 	case deploymentsPanel:

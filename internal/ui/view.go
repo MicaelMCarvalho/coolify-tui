@@ -320,12 +320,15 @@ func (m Model) environmentsPane(
 	height int,
 ) string {
 	var items []string
+	total := 0
 
 	if m.project != nil {
+		total = len(m.project.Environments)
+
 		items = make(
 			[]string,
 			0,
-			len(m.project.Environments),
+			total,
 		)
 
 		for _, environment := range m.project.Environments {
@@ -336,9 +339,24 @@ func (m Model) environmentsPane(
 		}
 	}
 
+	indices := m.filteredIndices(
+		environmentsPanel,
+	)
+
+	items = filterItemsByIndices(
+		items,
+		indices,
+	)
+
+	cursor := filteredCursorPosition(
+		indices,
+		m.environmentCursor,
+	)
+
 	title := fmt.Sprintf(
-		"[3] Environments (%d)",
+		"[3] Environments (%d/%d)",
 		len(items),
+		total,
 	)
 
 	return m.renderPane(
@@ -346,7 +364,7 @@ func (m Model) environmentsPane(
 		title,
 		renderList(
 			items,
-			m.environmentCursor,
+			cursor,
 			height-3,
 			width-4,
 		),
@@ -380,8 +398,23 @@ func (m Model) resourcesPane(
 		items = append(items, item)
 	}
 
+	indices := m.filteredIndices(
+		resourcesPanel,
+	)
+
+	items = filterItemsByIndices(
+		items,
+		indices,
+	)
+
+	cursor := filteredCursorPosition(
+		indices,
+		m.resourceCursor,
+	)
+
 	title := fmt.Sprintf(
-		"[4] Resources (%d)",
+		"[4] Resources (%d/%d)",
+		len(items),
 		len(m.resources),
 	)
 
@@ -390,7 +423,7 @@ func (m Model) resourcesPane(
 		title,
 		renderList(
 			items,
-			m.resourceCursor,
+			cursor,
 			height-3,
 			width-4,
 		),
@@ -551,8 +584,23 @@ func (m Model) environmentVariablesPane(
 		items = append(items, item)
 	}
 
+	indices := m.filteredIndices(
+		environmentVariablesPanel,
+	)
+
+	items = filterItemsByIndices(
+		items,
+		indices,
+	)
+
+	cursor := filteredCursorPosition(
+		indices,
+		m.environmentVariablesCursor,
+	)
+
 	title := fmt.Sprintf(
-		"[6] Environment Variables (%d)",
+		"[6] Environment Variables (%d/%d)",
+		len(items),
 		len(m.environmentVariables),
 	)
 
@@ -565,7 +613,7 @@ func (m Model) environmentVariablesPane(
 		title,
 		renderList(
 			items,
-			m.environmentVariablesCursor,
+			cursor,
 			height-3,
 			width-4,
 		),
