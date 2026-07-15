@@ -1,4 +1,7 @@
 .DS_Store
 .env
-coolify-tui
-dist/
+.env.*
+!.env.example
+
+/coolify-tui
+/dist/
