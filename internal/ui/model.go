@@ -87,6 +87,12 @@ type Model struct {
 	environmentVariablesCursor int
 	revealEnvironmentValues    bool
 
+	filtering      bool
+	filterPanel    panel
+	filterInput    string
+	filterOriginal string
+	filters        map[panel]string
+
 	width   int
 	height  int
 	loading bool
@@ -103,6 +109,7 @@ func NewModel(client *coolify.Client) Model {
 		projects:       []coolify.Project{},
 		resources:      []coolify.Resource{},
 		deployments:    []coolify.Deployment{},
+		filters:        make(map[panel]string),
 	}
 }
 

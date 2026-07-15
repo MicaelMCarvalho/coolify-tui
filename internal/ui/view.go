@@ -134,9 +134,23 @@ func (m Model) View() string {
 		rightColumn,
 	)
 
-	footer := footerStyle.Render(
-		"tab/shift+tab panel • 1-7 jump • j/k move • v reveal env • r refresh • q quit",
-	)
+	footerText :=
+		"tab/shift+tab panel • 1-7 jump • j/k move • / filter • r refresh • q quit"
+
+	if m.filtering {
+		footerText = fmt.Sprintf(
+			"Filter: %s█ • enter accept • esc cancel • ctrl+u clear",
+			m.filterInput,
+		)
+	} else if filterablePanel(m.activePanel) &&
+		m.filters[m.activePanel] != "" {
+		footerText = fmt.Sprintf(
+			"Filter: %s • / edit • esc clear • j/k move",
+			m.filters[m.activePanel],
+		)
+	}
+
+	footer := footerStyle.Render(footerText)
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -269,8 +283,21 @@ func (m Model) projectsPane(
 		items = append(items, project.Name)
 	}
 
+	indices := m.filteredIndices(projectsPanel)
+
+	items = filterItemsByIndices(
+		items,
+		indices,
+	)
+
+	cursor := filteredCursorPosition(
+		indices,
+		m.projectCursor,
+	)
+
 	title := fmt.Sprintf(
-		"[2] Projects (%d)",
+		"[2] Projects (%d/%d)",
+		len(items),
 		len(m.projects),
 	)
 
@@ -279,7 +306,7 @@ func (m Model) projectsPane(
 		title,
 		renderList(
 			items,
-			m.projectCursor,
+			cursor,
 			height-3,
 			width-4,
 		),

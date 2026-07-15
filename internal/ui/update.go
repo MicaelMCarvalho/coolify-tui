@@ -203,6 +203,10 @@ func (m Model) handleKey(
 		return m, nil
 	}
 
+	if m.filtering {
+		return m.handleFilterKey(msg)
+	}
+
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
@@ -257,6 +261,12 @@ func (m Model) handleKey(
 		m.focusNextPanel()
 
 	case "esc":
+		if filterablePanel(m.activePanel) &&
+			m.filters[m.activePanel] != "" {
+			m.filters[m.activePanel] = ""
+			return m, m.moveToBoundary(true)
+		}
+
 		m.focusPreviousPanel()
 
 	case "up", "k":
@@ -292,6 +302,17 @@ func (m Model) handleKey(
 			m.revealEnvironmentValues =
 				!m.revealEnvironmentValues
 		}
+
+	case "/":
+		if !filterablePanel(m.activePanel) {
+			return m, nil
+		}
+
+		m.filtering = true
+		m.filterPanel = m.activePanel
+		m.filterOriginal = m.filters[m.activePanel]
+		m.filterInput = m.filters[m.activePanel]
+		return m, nil
 	}
 
 	return m, nil
@@ -325,11 +346,17 @@ func (m *Model) moveCursor(
 		return nil
 
 	case projectsPanel:
-		next := m.projectCursor + change
+		indices := m.filteredIndices(
+			projectsPanel,
+		)
 
-		if next < 0 ||
-			next >= len(m.projects) ||
-			next == m.projectCursor {
+		next, ok := nextFilteredIndex(
+			indices,
+			m.projectCursor,
+			change,
+		)
+
+		if !ok || next == m.projectCursor {
 			return nil
 		}
 
@@ -438,13 +465,17 @@ func (m *Model) moveToBoundary(
 		}
 
 	case projectsPanel:
-		if len(m.projects) == 0 {
+		indices := m.filteredIndices(
+			projectsPanel,
+		)
+
+		if len(indices) == 0 {
 			return nil
 		}
 
-		target := 0
+		target := indices[0]
 		if !first {
-			target = len(m.projects) - 1
+			target = indices[len(indices)-1]
 		}
 
 		if target == m.projectCursor {
