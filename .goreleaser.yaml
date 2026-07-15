@@ -39,6 +39,22 @@ archives:
       - README.md
       - LICENSE
 
+homebrew_casks:
+  - name: coolify-tui
+    binaries:
+      - coolify-tui
+    directory: Casks
+    homepage: "https://github.com/micaelmcarvalho/coolify-tui"
+    description: "Read-only terminal dashboard for Coolify"
+    repository:
+      owner: micaelmcarvalho
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    commit_author:
+      name: github-actions[bot]
+      email: 41898282+github-actions[bot]@users.noreply.github.com
+
 checksum:
   name_template: checksums.txt
 
