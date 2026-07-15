@@ -651,8 +651,23 @@ func (m Model) deploymentsPane(
 		items = append(items, item)
 	}
 
+	indices := m.filteredIndices(
+		deploymentsPanel,
+	)
+
+	items = filterItemsByIndices(
+		items,
+		indices,
+	)
+
+	cursor := filteredCursorPosition(
+		indices,
+		m.deploymentCursor,
+	)
+
 	title := fmt.Sprintf(
-		"[7] Deployments (%d/%d)",
+		"[7] Deployments (%d/%d shown, %d total)",
+		len(items),
 		len(m.deployments),
 		m.deploymentCount,
 	)
@@ -662,7 +677,7 @@ func (m Model) deploymentsPane(
 		title,
 		renderList(
 			items,
-			m.deploymentCursor,
+			cursor,
 			height-3,
 			width-4,
 		),

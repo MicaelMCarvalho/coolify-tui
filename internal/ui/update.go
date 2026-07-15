@@ -96,7 +96,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.deployments = msg.result.Deployments
 		m.deploymentCount = msg.result.Count
 		m.deploymentSkip = msg.skip
-		m.deploymentCursor = 0
+
+		indices := m.filteredIndices(
+			deploymentsPanel,
+		)
+
+		if len(indices) > 0 {
+			m.deploymentCursor = indices[0]
+		} else {
+			m.deploymentCursor = -1
+		}
+
 		m.loading = false
 		m.err = nil
 
@@ -459,12 +469,21 @@ func (m *Model) moveCursor(
 		m.environmentVariablesCursor = next
 
 	case deploymentsPanel:
-		next := m.deploymentCursor + change
+		indices := m.filteredIndices(
+			deploymentsPanel,
+		)
 
-		if next >= 0 &&
-			next < len(m.deployments) {
-			m.deploymentCursor = next
+		next, ok := nextFilteredIndex(
+			indices,
+			m.deploymentCursor,
+			change,
+		)
+
+		if !ok {
+			return nil
 		}
+
+		m.deploymentCursor = next
 	}
 
 	return nil
@@ -610,15 +629,18 @@ func (m *Model) moveToBoundary(
 		}
 
 	case deploymentsPanel:
-		if len(m.deployments) == 0 {
+		indices := m.filteredIndices(
+			deploymentsPanel,
+		)
+
+		if len(indices) == 0 {
+			m.deploymentCursor = -1
 			return nil
 		}
-
 		if first {
-			m.deploymentCursor = 0
+			m.deploymentCursor = indices[0]
 		} else {
-			m.deploymentCursor =
-				len(m.deployments) - 1
+			m.deploymentCursor = indices[len(indices)-1]
 		}
 	}
 
