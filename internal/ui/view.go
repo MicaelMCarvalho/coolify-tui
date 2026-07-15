@@ -49,6 +49,21 @@ func (m Model) View() string {
 		)
 	}
 
+	if m.helpOpen {
+		backgroundModel := m
+		backgroundModel.helpOpen = false
+
+		background := backgroundModel.View()
+		popup := m.helpPopup()
+
+		return overlayCentered(
+			background,
+			popup,
+			m.width,
+			m.height,
+		)
+	}
+
 	if m.deploymentDetailsOpen {
 		return m.deploymentDetailsView()
 	}
@@ -135,7 +150,7 @@ func (m Model) View() string {
 	)
 
 	footerText :=
-		"tab/shift+tab panel • 1-7 jump • j/k move • / filter • r refresh • q quit"
+		"tab/shift+tab panel • 1-7 jump • j/k move • / filter • ? help • r refresh • q quit"
 
 	if m.filtering {
 		footerText = fmt.Sprintf(
@@ -886,6 +901,88 @@ func deploymentLogLines(
 	return splitLogLines(string(raw))
 }
 
+func (m Model) helpPopup() string {
+	leftLines := []string{
+		titleStyle.Render("Navigation"),
+		"tab          next panel",
+		"shift+tab    previous panel",
+		"1-7          focus panel",
+		"j / k        move",
+		"g / G        first / last",
+		"enter        open / next",
+		"esc          back",
+		"",
+		titleStyle.Render("Filtering"),
+		"/            filter panel",
+		"enter        accept",
+		"esc          cancel / clear",
+		"ctrl+u       clear input",
+	}
+
+	rightLines := []string{
+		titleStyle.Render("Resources"),
+		"v            reveal env values",
+		"r            refresh",
+		"",
+		titleStyle.Render("Deployments"),
+		"n / p        next / previous page",
+		"enter        details and logs",
+		"j / k        scroll logs",
+		"g / G        top / bottom",
+		"",
+		titleStyle.Render("Global"),
+		"?            close help",
+		"q / ctrl+c   quit",
+	}
+
+	popupWidth := min(
+		76,
+		max(50, m.width-8),
+	)
+
+	columnWidth := max(
+		22,
+		(popupWidth-6)/2,
+	)
+
+	left := lipgloss.NewStyle().
+		Width(columnWidth).
+		Render(
+			strings.Join(leftLines, "\n"),
+		)
+
+	right := lipgloss.NewStyle().
+		Width(columnWidth).
+		Render(
+			strings.Join(rightLines, "\n"),
+		)
+
+	columns := lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		left,
+		right,
+	)
+
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		selectedStyle.Render("[?] Keyboard Help"),
+		"",
+		columns,
+		"",
+		footerStyle.Render(
+			"? or esc close",
+		),
+	)
+
+	return lipgloss.NewStyle().
+		Width(popupWidth).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("42")).
+		Background(lipgloss.Color("235")).
+		Padding(0, 1).
+		Render(content)
+}
+
 func deploymentLogPageSize(
 	height int,
 ) int {
@@ -1060,4 +1157,114 @@ func singleLine(value string) string {
 	)
 
 	return strings.TrimSpace(value)
+}
+
+func overlayCentered(
+	background string,
+	foreground string,
+	width int,
+	height int,
+) string {
+	backgroundLines := strings.Split(
+		background,
+		"\n",
+	)
+
+	foregroundLines := strings.Split(
+		foreground,
+		"\n",
+	)
+
+	foregroundWidth := lipgloss.Width(
+		foreground,
+	)
+
+	foregroundHeight := lipgloss.Height(
+		foreground,
+	)
+
+	x := max(
+		0,
+		(width-foregroundWidth)/2,
+	)
+
+	y := max(
+		0,
+		(height-foregroundHeight)/2,
+	)
+
+	// Make sure the background has exactly enough rows.
+	for len(backgroundLines) < height {
+		backgroundLines = append(
+			backgroundLines,
+			"",
+		)
+	}
+
+	for row, foregroundLine := range foregroundLines {
+		targetRow := y + row
+
+		if targetRow < 0 ||
+			targetRow >= len(backgroundLines) {
+			continue
+		}
+
+		backgroundLine := padANSILine(
+			backgroundLines[targetRow],
+			width,
+		)
+
+		popupLine := padANSILine(
+			foregroundLine,
+			foregroundWidth,
+		)
+
+		left := ansi.Cut(
+			backgroundLine,
+			0,
+			x,
+		)
+
+		right := ansi.Cut(
+			backgroundLine,
+			x+foregroundWidth,
+			width,
+		)
+
+		backgroundLines[targetRow] =
+			left + popupLine + right
+	}
+
+	if len(backgroundLines) > height {
+		backgroundLines =
+			backgroundLines[:height]
+	}
+
+	return strings.Join(
+		backgroundLines,
+		"\n",
+	)
+}
+
+func padANSILine(
+	line string,
+	width int,
+) string {
+	line = ansi.Truncate(
+		line,
+		width,
+		"",
+	)
+
+	missing := width -
+		ansi.StringWidth(line)
+
+	if missing > 0 {
+		line += strings.Repeat(
+			" ",
+			missing,
+		)
+	}
+
+	return line
 }

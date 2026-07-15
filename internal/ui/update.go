@@ -152,6 +152,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) handleKey(
 	msg tea.KeyMsg,
 ) (tea.Model, tea.Cmd) {
+	if m.helpOpen {
+		switch msg.String() {
+		case "?", "esc":
+			m.helpOpen = false
+			return m, nil
+
+		case "q", "ctrl+c":
+			return m, tea.Quit
+		}
+
+		return m, nil
+	}
+
+	if msg.String() == "?" &&
+		!m.filtering {
+		m.helpOpen = true
+		return m, nil
+	}
+
 	if m.deploymentDetailsOpen {
 		switch msg.String() {
 		case "q", "ctrl+c":

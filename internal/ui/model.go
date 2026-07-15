@@ -93,6 +93,8 @@ type Model struct {
 	filterOriginal string
 	filters        map[panel]string
 
+	helpOpen bool
+
 	width   int
 	height  int
 	loading bool
