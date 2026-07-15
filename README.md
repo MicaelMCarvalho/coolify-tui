@@ -4,6 +4,8 @@ A read-only terminal dashboard for [Coolify](https://coolify.io), inspired by to
 
 Browse teams, projects, environments, resources, environment variables, deployments, and deployment logs without leaving your terminal.
 
+> This is an independent project and is not officially affiliated with or maintained by Coolify.
+
 ## Features
 
 - Lazygit-style multi-panel interface
@@ -14,9 +16,10 @@ Browse teams, projects, environments, resources, environment variables, deployme
 - Environment-variable values masked by default
 - View deployment history
 - View deployment details and logs
+- Scroll through deployment logs
 - Filter projects, environments, resources, variables, and deployments
 - Keyboard help popup
-- Read-only API access
+- Read-only Coolify API access
 
 ## Requirements
 
@@ -25,33 +28,56 @@ Browse teams, projects, environments, resources, environment variables, deployme
 - A terminal with color support
 - Go 1.24 or newer when installing from source
 
-The recommended terminal size is at least `80x24`.
+A terminal size of at least `80x24` is recommended.
 
 ## Installation
 
 ### Using Go
 
-Install directly from GitHub:
+Install the latest version directly from GitHub:
 
-```bash
+```sh
 go install github.com/micaelmcarvalho/coolify-tui/cmd/coolify-tui@latest
 ```
 
-Make sure the Go binary directory is in your `PATH`:
+Make sure the Go binary directory is available in your `PATH`:
 
-```bash
+```sh
 export PATH="$PATH:$(go env GOPATH)/bin"
 ```
 
-Then run:
+Verify the installation:
 
-```bash
+```sh
+coolify-tui
+```
+
+If configuration has not been created yet, the application will explain how to configure it.
+
+### Using a GitHub release
+
+Download the archive for your operating system and architecture from the [GitHub Releases page](https://github.com/micaelmcarvalho/coolify-tui/releases).
+
+Extract the archive and move the binary somewhere in your `PATH`.
+
+On macOS or Linux:
+
+```sh
+chmod +x coolify-tui
+sudo mv coolify-tui /usr/local/bin/
+```
+
+Verify that it is available:
+
+```sh
 coolify-tui
 ```
 
 ### From source
 
-```bash
+Clone and build the project:
+
+```sh
 git clone https://github.com/micaelmcarvalho/coolify-tui.git
 cd coolify-tui
 
@@ -61,57 +87,120 @@ go build -o coolify-tui ./cmd/coolify-tui
 
 ## Configuration
 
-`coolify-tui` requires two environment variables:
+The easiest way to configure the application is:
 
-```bash
-export COOLIFY_URL="https://coolify.example.com"
-export COOLIFY_TOKEN="your-api-token"
+```sh
+coolify-tui configure
 ```
 
-Then start the dashboard:
+You will be prompted for:
 
-```bash
+- Your Coolify URL
+- Your Coolify API token
+
+Example:
+
+```text
+Coolify URL: https://coolify.example.com
+Coolify API token:
+Configuration saved to ...
+```
+
+The API token remains hidden while you type or paste it.
+
+After configuration, start the dashboard:
+
+```sh
 coolify-tui
 ```
 
-You can also create a local `.env` file:
+### Configuration file location
+
+The configuration is stored in your operating system's user configuration directory.
+
+Typical locations are:
+
+| Operating system | Location |
+| --- | --- |
+| macOS | `~/Library/Application Support/coolify-tui/config.json` |
+| Linux | `~/.config/coolify-tui/config.json` |
+| Windows | `%AppData%\coolify-tui\config.json` |
+
+On macOS and Linux, the file is created with permissions restricted to the current user.
+
+The file contains your Coolify URL and API token. Do not share or commit it to Git.
+
+### Environment variables
+
+You can use environment variables instead of the saved configuration:
+
+```sh
+export COOLIFY_URL="https://coolify.example.com"
+export COOLIFY_TOKEN="your-api-token"
+
+coolify-tui
+```
+
+Environment variables take precedence over the saved configuration.
+
+### Local `.env` file
+
+A local `.env` file is also supported, which is useful during development:
 
 ```dotenv
 COOLIFY_URL=https://coolify.example.com
 COOLIFY_TOKEN=your-api-token
 ```
 
-Run the application from the directory containing that file:
+Run the application from the directory containing the file:
 
-```bash
+```sh
 coolify-tui
 ```
 
-Do not commit `.env` files or API tokens to Git.
+Never commit `.env` files or API tokens to Git.
 
-### Coolify token permissions
+Make sure your `.gitignore` contains:
 
-For basic projects and resources, the token needs:
-
-```text
-read
+```gitignore
+.env
+.env.*
+!.env.example
 ```
 
-To view environment variables and deployment logs, it also needs:
+### Configuration priority
+
+When multiple configuration methods are present, the application uses the following priority:
+
+1. Exported environment variables
+2. Values from a local `.env` file
+3. Values saved by `coolify-tui configure`
+
+This allows release users to use the configuration command while developers and automation systems can continue using environment variables.
+
+## Coolify API token
+
+Create an API token from your Coolify dashboard.
+
+For basic projects and resources, the token needs read access.
+
+To view environment variables and deployment logs, it may also need:
 
 ```text
 read:sensitive
 ```
 
-The application currently performs only read-only API requests.
-
-Coolify tokens are scoped to the team that was active when the token was created. Accessing multiple teams will eventually require a separate token for each team.
+Token access can depend on the Coolify team and permissions associated with the token.
 
 See the [Coolify API authorization documentation](https://coolify.io/docs/api-reference/authorization) for more information.
 
+The application currently performs only read-only API requests.
+
 ## Usage
 
-```bash
+Start the dashboard:
+
+```sh
 coolify-tui
 ```
 
@@ -154,7 +243,13 @@ Selecting a project loads its environments. Selecting an environment loads its r
 | `Esc` | Cancel or clear the filter |
 | `Ctrl+U` | Clear the filter input |
 
-Filtering is available for projects, environments, resources, environment variables, and deployments.
+Filtering is available for:
+
+- Projects
+- Environments
+- Resources
+- Environment variables
+- Deployments
 
 ### Environment variables
 
@@ -162,19 +257,22 @@ Filtering is available for projects, environments, resources, environment variab
 | --- | --- |
 | `v` | Reveal or hide environment-variable values |
 
-Values are hidden by default.
+Environment-variable values are hidden by default.
 
-Be careful when revealing values: secrets may remain visible in terminal scrollback, screenshots, or screen recordings.
+Be careful when revealing values. Secrets may remain visible in terminal scrollback, screenshots, screen sharing, or screen recordings.
 
 ### Deployments
 
 | Key | Action |
 | --- | --- |
-| `n` | Next deployments page |
-| `p` | Previous deployments page |
-| `Enter` | Open deployment details and logs |
-| `j` / `k` | Scroll deployment logs |
-| `g` / `G` | Jump to the top or bottom of logs |
+| `n` | Load the next deployments page |
+| `p` | Load the previous deployments page |
+| `Enter` | Open the selected deployment |
+| `j` / `↓` | Scroll logs down |
+| `k` / `↑` | Scroll logs up |
+| `g` / `Home` | Jump to the beginning of the logs |
+| `G` / `End` | Jump to the end of the logs |
+| `r` | Refresh deployment details |
 | `Esc` | Return to the dashboard |
 
 ### Help
@@ -188,21 +286,32 @@ Be careful when revealing values: secrets may remain visible in terminal scrollb
 
 Clone the repository:
 
-```bash
+```sh
 git clone https://github.com/micaelmcarvalho/coolify-tui.git
 cd coolify-tui
 ```
 
-Install dependencies and run:
+Download dependencies:
 
-```bash
+```sh
 go mod download
+```
+
+Create a local configuration:
+
+```sh
+go run ./cmd/coolify-tui configure
+```
+
+Run the application:
+
+```sh
 go run ./cmd/coolify-tui
 ```
 
-Run the checks:
+Run the project checks:
 
-```bash
+```sh
 go fmt ./...
 go vet ./...
 go test ./...
@@ -210,7 +319,7 @@ go test ./...
 
 Build a local binary:
 
-```bash
+```sh
 go build -o coolify-tui ./cmd/coolify-tui
 ```
 
@@ -218,28 +327,32 @@ go build -o coolify-tui ./cmd/coolify-tui
 
 ```text
 cmd/coolify-tui/       Application entry point
-internal/config/       Environment configuration
+internal/config/       Configuration loading and storage
 internal/coolify/      Coolify API client and response types
-internal/ui/           Bubble Tea interface
+internal/ui/           Bubble Tea terminal interface
 ```
-
-## Roadmap
-
-- Multiple Coolify team profiles
-- Application runtime logs
-- Copy values and UUIDs to the clipboard
-- Config file support
-- GitHub binary releases
-- Homebrew installation
-- Confirmed deploy and restart actions
 
 ## Security
 
 - Use the least-privileged Coolify token possible.
-- Store tokens in environment variables or an ignored `.env` file.
-- Never commit API tokens.
+- Treat the saved configuration file as sensitive.
+- Never commit API tokens or `.env` files.
+- Avoid passing tokens through command-line arguments because they can appear in shell history and process lists.
 - Avoid revealing environment-variable values during screen sharing.
 - Revoke and replace any token that may have been exposed.
+- Keep the application and your Coolify installation updated.
+
+## Roadmap
+
+- Multiple Coolify profiles
+- Multiple team-specific tokens
+- Application runtime logs
+- Copy UUIDs and other safe values to the clipboard
+- Homebrew installation
+- Optional operating-system keychain integration
+- Confirmed deploy and restart actions
+
+Any future action that changes Coolify resources should require explicit confirmation.
 
 ## Contributing
 
@@ -247,16 +360,21 @@ Issues and pull requests are welcome.
 
 Before submitting a pull request, run:
 
-```bash
+```sh
 go fmt ./...
 go vet ./...
 go test ./...
 ```
 
+When reporting a bug, include:
+
+- Your operating system
+- Your terminal application
+- Your Coolify version
+- The steps needed to reproduce the problem
+
+Do not include API tokens, environment-variable values, or other secrets in bug reports.
+
 ## License
 
 Released under the [MIT License](LICENSE).
-
-## Disclaimer
-
-This is an independent community project and is not officially affiliated with or maintained by Coolify.
