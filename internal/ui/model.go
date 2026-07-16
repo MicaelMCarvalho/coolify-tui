@@ -73,7 +73,8 @@ type errMsg struct {
 }
 
 type Model struct {
-	client      *coolify.Client
+	// client      *coolify.Client
+	client      APIClient
 	activePanel panel
 
 	teams      []coolify.Team
@@ -121,7 +122,7 @@ type Model struct {
 	err     error
 }
 
-func NewModel(client *coolify.Client) Model {
+func NewModel(client APIClient) Model {
 	return Model{
 		client:         client,
 		activePanel:    teamsPanel,

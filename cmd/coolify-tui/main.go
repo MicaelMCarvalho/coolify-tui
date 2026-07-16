@@ -24,6 +24,14 @@ func main() {
 		case "version", "--version", "-v":
 			printVersion()
 			return
+
+		case "demo", "--demo", "-d":
+			runProgram(
+				ui.NewModel(
+					coolify.NewDemoClient(),
+				),
+			)
+			return
 		}
 	}
 
@@ -39,6 +47,17 @@ func main() {
 
 	program := tea.NewProgram(
 		ui.NewModel(client),
+		tea.WithAltScreen(),
+	)
+
+	if _, err := program.Run(); err != nil {
+		log.Fatalf("TUI error: %v", err)
+	}
+}
+
+func runProgram(model ui.Model) {
+	program := tea.NewProgram(
+		model,
 		tea.WithAltScreen(),
 	)
 
