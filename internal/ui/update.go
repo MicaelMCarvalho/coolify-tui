@@ -123,6 +123,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.deploymentDetailsUUID = msg.result.DeploymentUUID
 		m.deploymentDetails = nil
 		m.deploymentLogOffset = 0
+		m.deploymentFollowLogs = true
+		m.deploymentPolling = true
+		m.deploymentPollPending = false
 		m.loading = true
 		m.err = nil
 
@@ -139,9 +142,63 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		details := msg.deployment
 		m.deploymentDetails = &details
-		m.deploymentLogOffset = 0
 		m.loading = false
 		m.err = nil
+
+		logLines := deploymentLogLines(details.Logs)
+		maxLogOffset := max(
+			0,
+			len(logLines)-
+				deploymentLogPageSize(m.height),
+		)
+
+		if m.deploymentFollowLogs {
+			m.deploymentLogOffset = maxLogOffset
+		} else {
+			m.deploymentLogOffset = min(
+				m.deploymentLogOffset,
+				maxLogOffset,
+			)
+		}
+
+		if deploymentStatusIsTerminal(details.Status) {
+			m.deploymentPolling = false
+			m.deploymentPollPending = false
+			return m, nil
+		}
+
+		m.deploymentPolling = true
+
+		if m.deploymentPollPending {
+			return m, nil
+		}
+
+		m.deploymentPollPending = true
+
+		return m, pollDeploymentAfter(
+			m.deploymentDetailsUUID,
+		)
+
+	case deploymentDetailsFailedMsg:
+		if !m.deploymentDetailsOpen ||
+			m.deploymentDetailsUUID == "" ||
+			m.deploymentDetailsUUID != msg.deploymentUUID {
+			return m, nil
+		}
+
+		m.loading = false
+		m.err = msg.err
+
+		if !m.deploymentPolling ||
+			m.deploymentPollPending {
+			return m, nil
+		}
+
+		m.deploymentPollPending = true
+
+		return m, pollDeploymentAfter(
+			msg.deploymentUUID,
+		)
 
 	case environmentVariablesLoadedMsg:
 		resource := m.selectedResource()
@@ -159,6 +216,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errMsg:
 		m.loading = false
 		m.err = msg.err
+
+	case deploymentPollMsg:
+		if !m.deploymentDetailsOpen ||
+			!m.deploymentPolling ||
+			m.deploymentDetailsUUID == "" ||
+			m.deploymentDetailsUUID != msg.deploymentUUID {
+			return m, nil
+		}
+
+		if m.loading {
+			m.deploymentPollPending = true
+			return m, pollDeploymentAfter(
+				msg.deploymentUUID,
+			)
+		}
+		m.deploymentPollPending = false
+		m.loading = true
+
+		return m, m.loadDeploymentDetails(
+			msg.deploymentUUID,
+		)
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -233,12 +311,16 @@ func (m Model) handleKey(
 			m.deploymentDetailsUUID = ""
 			m.deploymentDetails = nil
 			m.deploymentLogOffset = 0
+			m.deploymentFollowLogs = false
+			m.deploymentPolling = false
+			m.deploymentPollPending = false
 			m.loading = false
 			m.err = nil
 
 			return m, nil
 
 		case "up", "k":
+			m.deploymentFollowLogs = false
 			if m.deploymentLogOffset > 0 {
 				m.deploymentLogOffset--
 			}
@@ -249,23 +331,33 @@ func (m Model) handleKey(
 					m.deploymentDetails.Logs,
 				)
 
+				maxOffset := max(
+					0,
+					len(lines)-
+						deploymentLogPageSize(m.height),
+				)
 				if m.deploymentLogOffset <
-					max(0, len(lines)-1) {
+					maxOffset {
 					m.deploymentLogOffset++
 				}
 			}
 
 		case "g", "home":
+			m.deploymentFollowLogs = false
 			m.deploymentLogOffset = 0
 
 		case "G", "end":
+			m.deploymentFollowLogs = true
 			if m.deploymentDetails != nil {
 				lines := deploymentLogLines(
 					m.deploymentDetails.Logs,
 				)
 
 				m.deploymentLogOffset =
-					max(0, len(lines)-1)
+					max(
+						0,
+						len(lines)-deploymentLogPageSize(m.height),
+					)
 			}
 
 		case "r":
@@ -332,6 +424,9 @@ func (m Model) handleKey(
 			m.deploymentDetailsUUID = deployment.DeploymentUUID
 			m.deploymentDetails = nil
 			m.deploymentLogOffset = 0
+			m.deploymentFollowLogs = true
+			m.deploymentPolling = true
+			m.deploymentPollPending = false
 			m.loading = true
 			m.err = nil
 
@@ -858,6 +953,27 @@ func (m *Model) previousDeploymentPage() tea.Cmd {
 		resource.UUID,
 		previousSkip,
 	)
+}
+
+func deploymentStatusIsTerminal(
+	status string,
+) bool {
+	status = strings.ToLower(strings.TrimSpace(status))
+
+	terminalValues := []string{
+		"finished",
+		"failed",
+		"cancelled",
+		"canceled",
+		"error",
+	}
+
+	for _, value := range terminalValues {
+		if strings.Contains(status, value) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Model) applyTeams(

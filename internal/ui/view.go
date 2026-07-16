@@ -165,7 +165,7 @@ func (m Model) View() string {
 	)
 
 	footerText :=
-	"tab/shift+tab panel • 1-7 jump • j/k move • d deploy • / filter • ? help • r refresh • q quit"
+		"tab/shift+tab panel • 1-7 jump • j/k move • d deploy • / filter • ? help • r refresh • q quit"
 
 	if m.filtering {
 		footerText = fmt.Sprintf(
@@ -717,8 +717,24 @@ func (m Model) deploymentsPane(
 }
 
 func (m Model) deploymentDetailsView() string {
+	pollingText := "polling stopped"
+
+	if m.deploymentPolling {
+		pollingText = "refreshing every 2s"
+	}
+
+	followingText := "log follow paused"
+
+	if m.deploymentFollowLogs {
+		followingText = "following logs"
+	}
+
 	footer := footerStyle.Render(
-		"j/k scroll logs • g/G top/bottom • r refresh • esc back • q quit",
+		fmt.Sprintf(
+			"%s • %s • j/k scroll • G follow • r refresh • esc back • q quit",
+			pollingText,
+			followingText,
+		),
 	)
 
 	paneHeight := m.height - 1

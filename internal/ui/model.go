@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/micaelmcarvalho/coolify-tui/internal/coolify"
@@ -58,6 +59,15 @@ type deploymentStartedMsg struct {
 	result       coolify.StartDeploymentResult
 }
 
+type deploymentDetailsFailedMsg struct {
+	deploymentUUID string
+	err            error
+}
+
+type deploymentPollMsg struct {
+	deploymentUUID string
+}
+
 type errMsg struct {
 	err error
 }
@@ -85,11 +95,13 @@ type Model struct {
 	deploymentTake   int
 
 	deploymentDetailsOpen bool
+	deploymentDetailsUUID string
 	deploymentDetails     *coolify.DeploymentDetails
 	deploymentLogOffset   int
-
+	deploymentFollowLogs  bool
+	deploymentPolling     bool
+	deploymentPollPending bool
 	deployConfirmOpen     bool
-	deploymentDetailsUUID string
 
 	environmentVariables       []coolify.EnvironmentVariable
 	environmentVariablesCursor int
@@ -266,7 +278,10 @@ func (m Model) loadDeploymentDetails(
 			deploymentUUID,
 		)
 		if err != nil {
-			return errMsg{err: err}
+			return deploymentDetailsFailedMsg{
+				deploymentUUID: deploymentUUID,
+				err:            err,
+			}
 		}
 
 		return deploymentDetailsLoadedMsg{
@@ -324,4 +339,19 @@ func (m Model) selectedDeployment() *coolify.Deployment {
 	}
 
 	return &m.deployments[m.deploymentCursor]
+}
+
+const deploymentPollInterval = 2 * time.Second
+
+func pollDeploymentAfter(
+	deploymentUUID string,
+) tea.Cmd {
+	return tea.Tick(
+		deploymentPollInterval,
+		func(time.Time) tea.Msg {
+			return deploymentPollMsg{
+				deploymentUUID: deploymentUUID,
+			}
+		},
+	)
 }
