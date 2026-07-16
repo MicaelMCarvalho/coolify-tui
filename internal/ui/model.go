@@ -53,6 +53,11 @@ type deploymentDetailsLoadedMsg struct {
 	deployment   coolify.DeploymentDetails
 }
 
+type deploymentStartedMsg struct {
+	resourceUUID string
+	result       coolify.StartDeploymentResult
+}
+
 type errMsg struct {
 	err error
 }
@@ -82,6 +87,9 @@ type Model struct {
 	deploymentDetailsOpen bool
 	deploymentDetails     *coolify.DeploymentDetails
 	deploymentLogOffset   int
+
+	deployConfirmOpen     bool
+	deploymentDetailsUUID string
 
 	environmentVariables       []coolify.EnvironmentVariable
 	environmentVariablesCursor int
@@ -264,6 +272,26 @@ func (m Model) loadDeploymentDetails(
 		return deploymentDetailsLoadedMsg{
 			resourceUUID: deploymentUUID,
 			deployment:   details,
+		}
+	}
+}
+
+func (m Model) startApplicationDeployment(
+	applicationUUID string,
+) tea.Cmd {
+	return func() tea.Msg {
+		result, err := m.client.StartApplicationDeployment(
+			context.Background(),
+			applicationUUID,
+			false,
+		)
+		if err != nil {
+			return errMsg{err: err}
+		}
+
+		return deploymentStartedMsg{
+			resourceUUID: applicationUUID,
+			result:       result,
 		}
 	}
 }

@@ -230,6 +230,46 @@ func (c *Client) ListApplicationEnvironmentVariables(
 	return variables, nil
 }
 
+func (c *Client) StartApplicationDeployment(
+	ctx context.Context,
+	applicationUUID string,
+	forceRebuild bool,
+) (StartDeploymentResult, error) {
+	applicationUUID = strings.TrimSpace(applicationUUID)
+
+	if applicationUUID == "" {
+		return StartDeploymentResult{},
+			fmt.Errorf("application UUID is required")
+	}
+
+	query := url.Values{}
+	if forceRebuild {
+		query.Set("force", "true")
+	}
+
+	path := "/applications/" +
+		url.PathEscape(applicationUUID) +
+		"/start"
+
+	if len(query) > 0 {
+		path += "?" + query.Encode()
+	}
+
+	var result StartDeploymentResult
+
+	if err := c.get(ctx, path, &result); err != nil {
+		return StartDeploymentResult{},
+			fmt.Errorf("start application deployment: %w", err)
+	}
+
+	if strings.TrimSpace(result.DeploymentUUID) == "" {
+		return StartDeploymentResult{},
+			fmt.Errorf("Coolify did not return a deployment UUID")
+	}
+
+	return result, nil
+}
+
 func (c *Client) get(
 	ctx context.Context,
 	path string,
@@ -240,6 +280,41 @@ func (c *Client) get(
 		http.MethodGet,
 		c.baseURL+path,
 		nil,
+	)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "coolify-tui")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return decodeAPIError(resp)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
+		return fmt.Errorf("decode response: %w", err)
+	}
+	return nil
+}
+
+func (c *Client) post(
+	ctx context.Context,
+	path string,
+	result any,
+) error {
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		c.baseURL+path,
+		http.NoBody,
 	)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)

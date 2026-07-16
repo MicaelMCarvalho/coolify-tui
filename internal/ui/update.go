@@ -110,12 +110,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.err = nil
 
-	case deploymentDetailsLoadedMsg:
-		selected := m.selectedDeployment()
+	case deploymentStartedMsg:
+		resource := m.selectedResource()
 
+		if resource == nil ||
+			resource.UUID != msg.resourceUUID {
+			return m, nil
+		}
+
+		m.deployConfirmOpen = false
+		m.deploymentDetailsOpen = true
+		m.deploymentDetailsUUID = msg.result.DeploymentUUID
+		m.deploymentDetails = nil
+		m.deploymentLogOffset = 0
+		m.loading = true
+		m.err = nil
+
+		return m, m.loadDeploymentDetails(
+			msg.result.DeploymentUUID,
+		)
+
+	case deploymentDetailsLoadedMsg:
 		if !m.deploymentDetailsOpen ||
-			selected == nil ||
-			selected.DeploymentUUID != msg.deployment.DeploymentUUID {
+			m.deploymentDetailsUUID == "" ||
+			m.deploymentDetailsUUID != msg.deployment.DeploymentUUID {
 			return m, nil
 		}
 
@@ -165,6 +183,40 @@ func (m Model) handleKey(
 		return m, nil
 	}
 
+	if m.deployConfirmOpen {
+		switch msg.String() {
+		case "esc", "n":
+			m.deployConfirmOpen = false
+			m.loading = false
+			m.err = nil
+
+			return m, nil
+
+		case "y", "enter":
+			resource := m.selectedResource()
+			if resource == nil ||
+				!strings.EqualFold(
+					resource.Type,
+					"application",
+				) {
+				m.deployConfirmOpen = false
+				return m, nil
+			}
+
+			m.deployConfirmOpen = false
+			m.loading = true
+			m.err = nil
+
+			return m, m.startApplicationDeployment(
+				resource.UUID,
+			)
+		case "ctrl+c":
+			return m, tea.Quit
+		}
+
+		return m, nil
+	}
+
 	if msg.String() == "?" &&
 		!m.filtering {
 		m.helpOpen = true
@@ -178,6 +230,7 @@ func (m Model) handleKey(
 
 		case "esc":
 			m.deploymentDetailsOpen = false
+			m.deploymentDetailsUUID = ""
 			m.deploymentDetails = nil
 			m.deploymentLogOffset = 0
 			m.loading = false
@@ -216,8 +269,7 @@ func (m Model) handleKey(
 			}
 
 		case "r":
-			selected := m.selectedDeployment()
-			if selected == nil {
+			if m.deploymentDetailsUUID == "" {
 				return m, nil
 			}
 
@@ -225,7 +277,7 @@ func (m Model) handleKey(
 			m.err = nil
 
 			return m, m.loadDeploymentDetails(
-				selected.DeploymentUUID,
+				m.deploymentDetailsUUID,
 			)
 		}
 
@@ -277,6 +329,7 @@ func (m Model) handleKey(
 			}
 
 			m.deploymentDetailsOpen = true
+			m.deploymentDetailsUUID = deployment.DeploymentUUID
 			m.deploymentDetails = nil
 			m.deploymentLogOffset = 0
 			m.loading = true
@@ -341,6 +394,20 @@ func (m Model) handleKey(
 		m.filterPanel = m.activePanel
 		m.filterOriginal = m.filters[m.activePanel]
 		m.filterInput = m.filters[m.activePanel]
+		return m, nil
+
+	case "d":
+		resource := m.selectedResource()
+		if resource == nil ||
+			!strings.EqualFold(
+				resource.Type,
+				"application",
+			) {
+			return m, nil
+		}
+
+		m.deployConfirmOpen = true
+		m.err = nil
 		return m, nil
 	}
 

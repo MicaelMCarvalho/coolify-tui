@@ -64,6 +64,21 @@ func (m Model) View() string {
 		)
 	}
 
+	if m.deployConfirmOpen {
+		backgroundModel := m
+		backgroundModel.deployConfirmOpen = false
+
+		background := backgroundModel.View()
+		popup := m.deployConfirmationPopup()
+
+		return overlayCentered(
+			background,
+			popup,
+			m.width,
+			m.height,
+		)
+	}
+
 	if m.deploymentDetailsOpen {
 		return m.deploymentDetailsView()
 	}
@@ -150,7 +165,7 @@ func (m Model) View() string {
 	)
 
 	footerText :=
-		"tab/shift+tab panel • 1-7 jump • j/k move • / filter • ? help • r refresh • q quit"
+	"tab/shift+tab panel • 1-7 jump • j/k move • d deploy • / filter • ? help • r refresh • q quit"
 
 	if m.filtering {
 		footerText = fmt.Sprintf(
@@ -900,6 +915,74 @@ func deploymentLogLines(
 
 	return splitLogLines(string(raw))
 }
+func (m Model) deployConfirmationPopup() string {
+	resource := m.selectedResource()
+	project := m.selectedProject()
+	environment := m.selectedEnvironment()
+
+	if resource == nil {
+		return errorStyle.Render(
+			"No application selected",
+		)
+	}
+
+	projectName := "(unknown)"
+	if project != nil {
+		projectName = project.Name
+	}
+
+	environmentName := "(unknown)"
+	if environment != nil {
+		environmentName = environment.Name
+	}
+
+	branch := strings.TrimSpace(
+		resource.GitBranch,
+	)
+	if branch == "" {
+		branch = "(not reported)"
+	}
+
+	lines := []string{
+		selectedStyle.Render(
+			"Start new deployment?",
+		),
+		"",
+		descriptionStyle.Render("Application: ") +
+			resource.Name,
+		descriptionStyle.Render("Project: ") +
+			projectName,
+		descriptionStyle.Render("Environment: ") +
+			environmentName,
+		descriptionStyle.Render("Branch: ") +
+			branch,
+		descriptionStyle.Render("Force rebuild: ") +
+			"No",
+		"",
+		stoppedStyle.Render(
+			"This will change the application state.",
+		),
+		"",
+		footerStyle.Render(
+			"y / enter deploy • n / esc cancel",
+		),
+	}
+
+	popupWidth := min(
+		70,
+		max(50, m.width-12),
+	)
+
+	return lipgloss.NewStyle().
+		Width(popupWidth).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("220")).
+		Background(lipgloss.Color("235")).
+		Padding(1, 2).
+		Render(
+			strings.Join(lines, "\n"),
+		)
+}
 
 func (m Model) helpPopup() string {
 	leftLines := []string{
@@ -923,6 +1006,7 @@ func (m Model) helpPopup() string {
 		titleStyle.Render("Resources"),
 		"v            reveal env values",
 		"r            refresh",
+		"d						deploy selected app",
 		"",
 		titleStyle.Render("Deployments"),
 		"n / p        next / previous page",

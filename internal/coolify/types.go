@@ -48,6 +48,7 @@ type Resource struct {
 	Name          string  `json:"name"`
 	Type          string  `json:"type"`
 	Status        string  `json:"status"`
+	GitBranch     string  `json:"git_branch"`
 	EnvironmentID int     `json:"environment_id"`
 	Description   *string `json:"description"`
 	FQDN          *string `json:"fqdn"`
@@ -108,4 +109,9 @@ type EnvironmentVariable struct {
 
 type APIError struct {
 	Message string `json:"message"`
+}
+
+type StartDeploymentResult struct {
+	Message        string `json:"message"`
+	DeploymentUUID string `json:"deployment_uuid"`
 }
